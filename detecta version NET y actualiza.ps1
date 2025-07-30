@@ -73,9 +73,9 @@ function Update-DotNetRuntimes {
     Write-Host "`n=== Actualizando .NET Runtimes a versiones seguras ==="
 
     $downloads = @(
-        @{ Name = ".NET 6.0.29 Runtime"; Url = "https://download.visualstudio.microsoft.com/download/pr/2a94cce7-bfb7-4b37-9cf4-8b14f8755129/3a4c48f6474bc9269c0c43c9cbad8220/dotnet-runtime-6.0.29-win-x64.exe" },
-        @{ Name = ".NET 7.0.18 Runtime"; Url = "https://download.visualstudio.microsoft.com/download/pr/b235f18c-9ce6-4ec1-bd0d-5ebf36e3e2d1/9ee148ca80c659ca09e9db46c1bb08e1/dotnet-runtime-7.0.18-win-x64.exe" },
-        @{ Name = ".NET 8.0.4 Runtime" ; Url = "https://download.visualstudio.microsoft.com/download/pr/fe506e2f-b735-435c-a4ce-3276b960dd80/f1b6e7fda72f3e0dbdb546d2d1f96352/dotnet-runtime-8.0.4-win-x64.exe" }
+        @{ Name = ".NET 6.0.29 Runtime"; Url = "https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.29/dotnet-runtime-6.0.29-win-x64.exe" },
+        @{ Name = ".NET 7.0.18 Runtime"; Url = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/7.0.18/windowsdesktop-runtime-7.0.18-win-x64.exe" },
+        @{ Name = ".NET 8.0.4 Runtime" ; Url = "https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.4/dotnet-runtime-8.0.4-win-x64.exe" }
     )
 
     foreach ($item in $downloads) {
