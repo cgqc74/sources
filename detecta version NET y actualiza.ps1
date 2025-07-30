@@ -54,9 +54,17 @@ function Install-IfAvailable {
             Write-Host "✅ Instalación de $Name completada."
         }
     } catch {
-        Write-Warning "❌ No se pudo descargar o instalar $Name: $($_.Exception.Message)"
-        if ($_.Exception.Response.StatusCode.Value__ -in 502, 504) {
-            Write-Error "🚫 Error tipo Gateway (502/504). Verifica tu conexión o intenta más tarde."
+        $statusCode = $null
+        if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+            $statusCode = $_.Exception.Response.StatusCode.Value__
+        }
+
+        $errorMessage = $_.Exception.Message
+        Write-Warning "❌ No se pudo descargar o instalar $Name"
+        Write-Warning "   Motivo: $errorMessage"
+
+        if ($statusCode -in 502, 504) {
+            Write-Error "🚫 Error tipo Gateway ($statusCode): El servidor no respondió correctamente. Intenta más tarde o revisa tu conexión."
         }
     }
 }
@@ -95,7 +103,7 @@ function Update-PowerShell {
         Remove-Item $msi -Force
         Write-Host "✅ PowerShell actualizado a 7.4.2"
     } catch {
-        Write-Warning "❌ Error al actualizar PowerShell: $_"
+        Write-Warning "❌ Error al actualizar PowerShell: $($_.Exception.Message)"
     }
 }
 
