@@ -1,7 +1,7 @@
 # Define la versión segura mínima
 $SafeVersion = [version]"3.0.16"
 $TempDir = "$env:TEMP\OpenSSL_Update"
-$DownloadUrl = "https://slproweb.com/download/Win64OpenSSL-3_0_16.exe"  # Fuente oficial segura
+$DownloadUrl = "https://slproweb.com/download/Win64OpenSSL-3_5_1.exe"  # Fuente oficial segura
 
 # Función para obtener la versión de un binario DLL
 function Get-OpenSSLVersion {
