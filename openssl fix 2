@@ -1,0 +1,53 @@
+# Define la versión segura mínima
+$SafeVersion = [version]"3.0.16"
+$TempDir = "$env:TEMP\OpenSSL_Update"
+$DownloadUrl = "https://slproweb.com/download/Win64OpenSSL-3_0_16.exe"  # Fuente oficial segura
+
+# Función para obtener la versión de un binario DLL
+function Get-OpenSSLVersion {
+    param($Path)
+    try {
+        $fileVersion = (Get-Item $Path).VersionInfo.FileVersion
+        return [version]$fileVersion
+    } catch {
+        Write-Warning "No se pudo obtener versión de: $Path"
+        return $null
+    }
+}
+
+# Buscar archivos de OpenSSL en disco
+Write-Host "🔍 Buscando archivos de OpenSSL en el sistema..."
+$sslFiles = Get-ChildItem -Recurse -Path "C:\Program Files", "C:\Program Files (x86)", "C:\Windows", "$env:ProgramFiles", "$env:ProgramW6432" -Include libssl-*.dll, libcrypto-*.dll -ErrorAction SilentlyContinue
+
+if (-not $sslFiles) {
+    Write-Host "✅ No se detectaron archivos OpenSSL."
+    return
+}
+
+foreach ($file in $sslFiles) {
+    $ver = Get-OpenSSLVersion -Path $file.FullName
+    if ($ver -and $ver -lt $SafeVersion) {
+        Write-Warning "⚠️ Versión vulnerable detectada en $($file.FullName): $ver"
+        $vulnerable = $true
+    } elseif ($ver) {
+        Write-Host "✔️ Versión segura detectada en $($file.FullName): $ver"
+    }
+}
+
+if ($vulnerable) {
+    $choice = Read-Host "¿Deseas descargar e instalar OpenSSL seguro (3.0.16)? (s/n)"
+    if ($choice -eq "s") {
+        if (-not (Test-Path $TempDir)) { New-Item -ItemType Directory -Path $TempDir | Out-Null }
+        $InstallerPath = "$TempDir\Win64OpenSSL-3_0_16.exe"
+
+        Write-Host "⬇️ Descargando instalador desde $DownloadUrl..."
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath
+
+        Write-Host "🛠️ Ejecutando instalador (modo silencioso)..."
+        Start-Process -FilePath $InstallerPath -ArgumentList "/silent" -Wait
+
+        Write-Host "✅ OpenSSL actualizado correctamente."
+    }
+} else {
+    Write-Host "✅ No se detectaron versiones vulnerables de OpenSSL."
+}
