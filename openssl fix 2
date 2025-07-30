@@ -1,6 +1,6 @@
 # Define la versión segura mínima
-$SafeVersion = [version]"3.0.16"
-$TempDir = "$env:TEMP\OpenSSL_Update"
+$SafeVersion = [version]"3.5.1"
+$TempDir = "$env:TEMP\"
 $DownloadUrl = "https://slproweb.com/download/Win64OpenSSL-3_5_1.exe"  # Fuente oficial segura
 
 # Función para obtener la versión de un binario DLL
@@ -38,10 +38,10 @@ if ($vulnerable) {
     $choice = Read-Host "¿Deseas descargar e instalar OpenSSL seguro (3.0.16)? (s/n)"
     if ($choice -eq "s") {
         if (-not (Test-Path $TempDir)) { New-Item -ItemType Directory -Path $TempDir | Out-Null }
-        $InstallerPath = "$TempDir\Win64OpenSSL-3_0_16.exe"
+        $InstallerPath = "$TempDir\Win64OpenSSL-3_5_1.exe"
 
-        Write-Host "⬇️ Descargando instalador desde $DownloadUrl..."
-        Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath
+        #Write-Host "⬇️ Descargando instalador desde $DownloadUrl..."
+        #Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath
 
         Write-Host "🛠️ Ejecutando instalador (modo silencioso)..."
         Start-Process -FilePath $InstallerPath -ArgumentList "/silent" -Wait
