@@ -1,0 +1,57 @@
+# Detecta la versión de VMware Tools y verifica permisos inseguros para CVE-2024-6119
+
+# Ruta típica de instalación de VMware Tools
+$toolsPath = "C:\Program Files\VMware\VMware Tools"
+
+# Obtener versión instalada desde el registro
+function Get-VMwareToolsVersion {
+    $reg = "HKLM:\SOFTWARE\VMware, Inc.\VMware Tools"
+    if (Test-Path $reg) {
+        return (Get-ItemProperty $reg).ProductVersion
+    }
+    return $null
+}
+
+# Verificar permisos de la carpeta
+function Check-FolderPermissions {
+    param($folder)
+    if (-not (Test-Path $folder)) {
+        Write-Host "La carpeta de VMware Tools no existe: $folder" -ForegroundColor Yellow
+        return
+    }
+    $acl = Get-Acl $folder
+    $insecure = $false
+    foreach ($entry in $acl.Access) {
+        if (
+            ($entry.IdentityReference -match 'Everyone|Usuarios|Users') -and
+            ($entry.FileSystemRights -match 'FullControl|Modify')
+        ) {
+            Write-Host "Permiso inseguro detectado: $($entry.IdentityReference) tiene $($entry.FileSystemRights)" -ForegroundColor Red
+            $insecure = $true
+        }
+    }
+    if (-not $insecure) {
+        Write-Host "No se detectaron permisos inseguros en $folder." -ForegroundColor Green
+    }
+}
+
+# Verificación de versión
+$version = Get-VMwareToolsVersion
+if ($version) {
+    Write-Host "Versión de VMware Tools instalada: $version"
+    # Cambia esta versión por la mínima segura según el advisory de VMware (ejemplo: 12.4.0)
+    $safeVersion = [Version]"12.4.0"
+    if ([Version]$version -lt $safeVersion) {
+        Write-Host "Versión vulnerable detectada. Actualiza VMware Tools a $safeVersion o superior (CVE-2024-6119)." -ForegroundColor Red
+    } else {
+        Write-Host "Versión no vulnerable detectada." -ForegroundColor Green
+    }
+} else {
+    Write-Host "VMware Tools no está instalado." -ForegroundColor Yellow
+}
+
+# Chequeo de permisos de carpeta
+Check-FolderPermissions -folder $toolsPath
+
+Write-Host "`nPara mitigar CVE-2024-6119, actualiza VMware Tools y asegúrate de que la carpeta tiene permisos restringidos." -ForegroundColor Cyan
+Write-Host "Más información: https://www.vmware.com/security/advisories/VMSA-2024-0013.html"
