@@ -1,0 +1,56 @@
+# CVE-2025-48386 mitigation for Git for Windows and Visual Studio
+
+# Function to get installed Git version
+function Get-GitVersion {
+    $gitCmd = Get-Command git.exe -ErrorAction SilentlyContinue
+    if ($gitCmd) {
+        $gitVersion = (& git --version) -replace '[^\d.]',''
+        return $gitVersion
+    }
+    return $null
+}
+
+function Update-GitWindows {
+    $gitUrl = "https://github.com/git-for-windows/git/releases/latest/download/Git-2.45.1-64-bit.exe"
+    $gitInstaller = "$env:TEMP\Git-2.45.1-64-bit.exe"
+    Write-Host "Descargando el instalador de Git for Windows..."
+    Invoke-WebRequest -Uri $gitUrl -OutFile $gitInstaller
+    Write-Host "Instalando Git for Windows (modo silencioso)..."
+    Start-Process -FilePath $gitInstaller -ArgumentList "/SILENT" -Wait
+    Remove-Item $gitInstaller -Force
+    Write-Host "Git for Windows actualizado."
+}
+
+# 1. Check Git version
+$gitVersion = Get-GitVersion
+if ($gitVersion) {
+    Write-Host "Git for Windows instalado. Versión detectada: $gitVersion"
+    # Se recomienda al menos la versión 2.45.1 o superior para mitigar CVE-2025-48386
+    if ([version]$gitVersion -lt [version]"2.45.1") {
+        Update-GitWindows
+    } else {
+        Write-Host "Ya tienes una versión de Git for Windows sin la vulnerabilidad."
+    }
+} else {
+    Write-Host "Git for Windows no está instalado. Instalando la última versión recomendada..."
+    Update-GitWindows
+}
+
+# 2. Intentar encontrar Visual Studio y sugerir actualización
+$vswherePath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+if (Test-Path $vswherePath) {
+    $vsList = & $vswherePath -products * -requires Microsoft.Component.MSBuild -property installationPath
+    foreach ($vs in $vsList) {
+        Write-Host "Encontrado Visual Studio en: $vs"
+        Write-Host "Ejecuta el actualizador de Visual Studio para aplicar parches de seguridad desde el instalador:"
+        Write-Host "`"$vs\Common7\IDE\VSIXInstaller.exe`" o abre el instalador de Visual Studio manualmente."
+    }
+    Write-Host "Para seguridad máxima, ejecuta el instalador de Visual Studio y aplica todas las actualizaciones."
+} else {
+    Write-Host "No se detectó Visual Studio o vswhere.exe. Actualiza Visual Studio manualmente si está instalado."
+}
+
+Write-Host "`nReferencias oficiales:"
+Write-Host "Microsoft Advisory: https://portal.msrc.microsoft.com/en-US/security-guidance/advisory/CVE-2025-48386"
+Write-Host "Más detalles: https://windowsforum.com/threads/critical-git-windows-vulnerability-cve-2025-48386-buffer-overflow-risks-security-fixes.372746/"
+Write-Host "`n¡Reinicia tu equipo después de la actualización si es necesario!" -ForegroundColor Cyan
