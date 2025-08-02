@@ -1,0 +1,83 @@
+<#
+    Script PowerShell: Elimina JMSAppender y clases relacionadas de archivos log4j-1.x.jar
+    - Realiza backup automático antes de modificar cada JAR.
+    - Requiere Java instalado y ejecutarse como Administrador si barre todo el disco.
+    - Útil para mitigar CVE-2022-23305 en sistemas Windows.
+    - Puedes ajustar la variable $RutaEscaneo si solo deseas buscar en ciertas carpetas.
+#>
+
+# Configuración: Cambia esta ruta para limitar el escaneo solo a ciertas carpetas si lo prefieres.
+$RutaEscaneo = "C:\"
+
+# Carpetas temporales para backup y extracción
+$BackupDir = "$env:TEMP\log4j_backups"
+$WorkDir   = "$env:TEMP\log4j_work"
+New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
+New-Item -Path $WorkDir -ItemType Directory -Force | Out-Null
+
+# Clases a eliminar (relacionadas a JMSAppender)
+$clasesAEliminar = @(
+    "org/apache/log4j/net/JMSAppender.class",
+    "org/apache/log4j/net/JMSAppender\$1.class",
+    "org/apache/log4j/net/JMSAppender\$2.class"
+)
+
+Write-Host "`nBuscando archivos log4j-1.x.jar en $RutaEscaneo...`n" -ForegroundColor Cyan
+
+# Encuentra los JAR de log4j 1.x
+$log4jJars = Get-ChildItem -Path $RutaEscaneo -Recurse -Include log4j-1.*.jar -ErrorAction SilentlyContinue
+
+if (!$log4jJars) {
+    Write-Host "No se encontraron archivos log4j-1.x.jar en $RutaEscaneo" -ForegroundColor Yellow
+    exit
+}
+
+foreach ($jar in $log4jJars) {
+    Write-Host "`nProcesando: $($jar.FullName)" -ForegroundColor Green
+
+    # Backup
+    $backupPath = Join-Path $BackupDir ($jar.Name + "." + (Get-Random) + ".bak")
+    Copy-Item $jar.FullName $backupPath -Force
+    Write-Host "Backup creado en: $backupPath" -ForegroundColor Yellow
+
+    # Directorio temporal para descomprimir el JAR
+    $extractPath = Join-Path $WorkDir ([guid]::NewGuid().ToString())
+    New-Item -Path $extractPath -ItemType Directory -Force | Out-Null
+
+    # Extraer el JAR
+    Write-Host "Extrayendo JAR..."
+    & tar -xf $jar.FullName -C $extractPath
+
+    # Borrar las clases peligrosas
+    $eliminadas = 0
+    foreach ($clase in $clasesAEliminar) {
+        $clasePath = Join-Path $extractPath $clase
+        if (Test-Path $clasePath) {
+            Remove-Item $clasePath -Force
+            Write-Host "Eliminada: $clase" -ForegroundColor Red
+            $eliminadas++
+        }
+    }
+
+    if ($eliminadas -eq 0) {
+        Write-Host "No se encontró JMSAppender en este JAR. Restaurando backup y saltando..." -ForegroundColor Gray
+        Remove-Item $extractPath -Recurse -Force
+        continue
+    }
+
+    # Crear nuevo JAR sin las clases peligrosas
+    $nuevoJar = $jar.FullName
+    Remove-Item $nuevoJar -Force
+    Push-Location $extractPath
+    & jar cf $nuevoJar *
+    Pop-Location
+
+    Write-Host "JAR modificado guardado en: $nuevoJar" -ForegroundColor Cyan
+
+    # Limpiar temporal
+    Remove-Item $extractPath -Recurse -Force
+}
+
+Write-Host "`n¡Proceso completado! Todos los archivos log4j-1.x.jar han sido respaldados y limpiados de JMSAppender si era necesario." -ForegroundColor Magenta
+Write-Host "Los backups están en: $BackupDir"
+Write-Host "Para restaurar un backup, reemplaza el JAR modificado por el archivo .bak correspondiente."
