@@ -1,0 +1,84 @@
+<#
+    Script PowerShell: Detecta y actualiza automáticamente .NET Framework 4.8.1 y .NET SDK 8
+    - Detecta la versión instalada de .NET Framework (4.8.1) y .NET SDK 8.
+    - Descarga e instala automáticamente los instaladores oficiales de Microsoft si no están presentes.
+    - Usa enlaces de descarga oficiales y estables.
+    - Requiere ejecutar como Administrador y conexión a Internet.
+#>
+
+function Get-DotNetFrameworkRelease {
+    $regKey = "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
+    if (Test-Path $regKey) {
+        $release = (Get-ItemProperty $regKey -ErrorAction SilentlyContinue).Release
+        return $release
+    }
+    return 0
+}
+
+function Install-DotNetFramework481 {
+    $fwUrl = "https://go.microsoft.com/fwlink/?linkid=2203305"
+    $fwFile = "$env:TEMP\ndp481-offline-installer.exe"
+    Write-Host "`nDescargando .NET Framework 4.8.1..."
+    try {
+        Invoke-WebRequest -Uri $fwUrl -OutFile $fwFile -UseBasicParsing
+    } catch {
+        Write-Host "Error al descargar el instalador de .NET Framework 4.8.1: $_" -ForegroundColor Red
+        return
+    }
+    if (Test-Path $fwFile) {
+        Write-Host "Instalando .NET Framework 4.8.1 en modo silencioso..."
+        Start-Process -FilePath $fwFile -ArgumentList "/quiet", "/norestart" -Wait
+        Remove-Item $fwFile -Force
+        Write-Host ".NET Framework 4.8.1 instalado. Se recomienda reiniciar el equipo." -ForegroundColor Green
+    } else {
+        Write-Host "No se encontró el instalador descargado de .NET Framework 4.8.1." -ForegroundColor Red
+    }
+}
+
+function Get-DotNetSdk8Installed {
+    $dotnet = Get-Command "dotnet" -ErrorAction SilentlyContinue
+    if (!$dotnet) { return $false }
+    $sdks = dotnet --list-sdks 2>$null
+    foreach ($sdk in $sdks) {
+        if ($sdk -match "^8\.") { return $true }
+    }
+    return $false
+}
+
+function Install-DotNetSdk8 {
+    $sdkUrl = "https://aka.ms/dotnet/8.0/dotnet-sdk-8.0.400-win-x64.exe"
+    $sdkFile = "$env:TEMP\dotnet-sdk-8.0.400-win-x64.exe"
+    Write-Host "`nDescargando .NET SDK 8.0.400..."
+    try {
+        Invoke-WebRequest -Uri $sdkUrl -OutFile $sdkFile -UseBasicParsing
+    } catch {
+        Write-Host "Error al descargar el instalador de .NET SDK 8: $_" -ForegroundColor Red
+        return
+    }
+    if (Test-Path $sdkFile) {
+        Write-Host "Instalando .NET SDK 8 en modo silencioso..."
+        Start-Process -FilePath $sdkFile -ArgumentList "/install", "/quiet", "/norestart" -Wait
+        Remove-Item $sdkFile -Force
+        Write-Host ".NET SDK 8 instalado correctamente." -ForegroundColor Green
+    } else {
+        Write-Host "No se encontró el instalador descargado de .NET SDK 8." -ForegroundColor Red
+    }
+}
+
+# --- Proceso principal ---
+Write-Host "`n[1/2] Comprobando .NET Framework 4.8.1..."
+$fwRelease = Get-DotNetFrameworkRelease
+if ($fwRelease -ge 533325) {
+    Write-Host ".NET Framework 4.8.1 ya está instalado." -ForegroundColor Green
+} else {
+    Install-DotNetFramework481
+}
+
+Write-Host "`n[2/2] Comprobando .NET SDK 8..."
+if (Get-DotNetSdk8Installed) {
+    Write-Host ".NET SDK 8 ya está instalado." -ForegroundColor Green
+} else {
+    Install-DotNetSdk8
+}
+
+Write-Host "`nProceso finalizado.`nSi se instalaron nuevas versiones, reinicie el equipo para completar la actualización." -ForegroundColor Cyan
