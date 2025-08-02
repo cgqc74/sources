@@ -1,5 +1,5 @@
-# Detectar todas las versiones de .NET Framework instaladas y actualizar automáticamente a la última versión (4.8.1)
-# Se requiere ejecutar como Administrador
+# Detectar todas las versiones de .NET Framework y .NET Core/.NET instaladas y actualizar automáticamente si es necesario.
+# Se requiere ejecutar como Administrador e Internet activo.
 
 Write-Host "Detectando versiones instaladas de .NET Framework..." -ForegroundColor Cyan
 
@@ -20,7 +20,7 @@ function Get-DotNetFrameworkVersionFromRelease($release) {
     }
 }
 
-# Buscar en el registro todas las versiones de .NET Framework instaladas
+# Paso 1: Detectar .NET Framework instalados
 $netFrameworks = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse |
     Get-ItemProperty -ErrorAction SilentlyContinue |
     Where-Object { $_.Version -or $_.Release -or $_.PSChildName -match '^(?!S)\p{L}.*' } |
@@ -41,19 +41,13 @@ foreach ($fw in $netFrameworks) {
     }
 }
 
-if (-not $found) {
-    Write-Host "No se detectaron versiones de .NET Framework instaladas." -ForegroundColor Yellow
-}
-
-# Comprobar si ya está instalada la última versión estable (4.8.1)
+# Paso 2: Instalar/Actualizar .NET Framework 4.8.1 si es necesario
 $ultimaRelease = 533325 # Release key para 4.8.1
 if ($highestRelease -ge $ultimaRelease) {
-    Write-Host "`nYa tienes instalada la última versión de .NET Framework (4.8.1)." -ForegroundColor Green
+    Write-Host "`nYa tienes instalada la última versión de .NET Framework (4.8.1 o superior)." -ForegroundColor Green
 } else {
-    # Descargar e instalar automáticamente .NET Framework 4.8.1 (requiere internet y privilegios de admin)
     Write-Host "`nActualizando automáticamente a .NET Framework 4.8.1..." -ForegroundColor Cyan
 
-    # URL oficial Microsoft para el instalador offline de 4.8.1
     $url = "https://download.visualstudio.microsoft.com/download/pr/d0a0d32f-3e09-4a7c-8d2e-4e3a2f7e0e0b/ab6e1f5f7f6ed97b9d4a74c0cf1e2f46/ndp481-x86-x64-allos-enu.exe"
     $file = "$env:TEMP\ndp481-x86-x64-allos-enu.exe"
 
@@ -61,22 +55,50 @@ if ($highestRelease -ge $ultimaRelease) {
     Invoke-WebRequest -Uri $url -OutFile $file
 
     if (Test-Path $file) {
-        Write-Host "Ejecutando instalador en modo silencioso..."
+        Write-Host "Ejecutando instalador de .NET Framework 4.8.1 en modo silencioso..."
         Start-Process -FilePath $file -ArgumentList "/quiet", "/norestart" -Wait
 
         Write-Host "`nInstalación completada. Es recomendable reiniciar el equipo para finalizar la actualización de .NET Framework." -ForegroundColor Green
         Remove-Item $file -Force
     } else {
-        Write-Host "No se pudo descargar el instalador. Verifica tu conexión a internet." -ForegroundColor Red
+        Write-Host "No se pudo descargar el instalador de .NET Framework. Verifica tu conexión a internet." -ForegroundColor Red
     }
 }
 
-# Extra: Detectar .NET Core y .NET 5+ instalados
+# Paso 3: Detectar SDKs de .NET Core y .NET 5+ instalados
 Write-Host "`nBuscando SDKs de .NET Core/.NET 5+ instalados..." -ForegroundColor Green
 if (Get-Command "dotnet" -ErrorAction SilentlyContinue) {
-    dotnet --list-sdks
-    Write-Host "Puedes actualizar .NET Core/.NET con winget: winget upgrade Microsoft.DotNet.SDK.8" -ForegroundColor Cyan
-    Write-Host "O desde: https://dotnet.microsoft.com/es-es/download" -ForegroundColor Cyan
+    $sdks = dotnet --list-sdks
+    if ($sdks) {
+        Write-Host "SDKs encontrados:" -ForegroundColor White
+        $sdks
+    } else {
+        Write-Host "No se detectó ningún SDK de .NET Core/.NET 5+ instalado." -ForegroundColor Yellow
+    }
+
+    # Paso 4: Descargar e instalar la última versión de .NET SDK (8.0 LTS) automáticamente usando winget si está disponible
+    if (Get-Command "winget" -ErrorAction SilentlyContinue) {
+        Write-Host "`nActualizando/Instalando .NET SDK 8 (LTS) usando winget..." -ForegroundColor Cyan
+        winget install --id Microsoft.DotNet.SDK.8 --silent --accept-package-agreements --accept-source-agreements
+        Write-Host "Actualización de .NET SDK 8 completada (revisa la salida para detalles)." -ForegroundColor Green
+    } else {
+        Write-Host "`nNo se encontró winget en este sistema. Descarga manualmente el último .NET SDK desde:" -ForegroundColor Yellow
+        Write-Host "https://dotnet.microsoft.com/es-es/download/dotnet/8.0" -ForegroundColor Cyan
+    }
 } else {
-    Write-Host "El comando 'dotnet' no está disponible en el PATH." -ForegroundColor Yellow
+    Write-Host "El comando 'dotnet' no está disponible en el PATH. Instalando .NET SDK 8..." -ForegroundColor Yellow
+    if (Get-Command "winget" -ErrorAction SilentlyContinue) {
+        winget install --id Microsoft.DotNet.SDK.8 --silent --accept-package-agreements --accept-source-agreements
+        Write-Host "Instalación de .NET SDK 8 completada (revisa la salida para detalles)." -ForegroundColor Green
+    } else {
+        Write-Host "No se encontró winget en este sistema. Descarga manualmente el último .NET SDK desde:" -ForegroundColor Yellow
+        Write-Host "https://dotnet.microsoft.com/es-es/download/dotnet/8.0" -ForegroundColor Cyan
+    }
 }
+
+Write-Host "`nPasos realizados:"
+Write-Host "1. Detección de versiones instaladas de .NET Framework."
+Write-Host "2. Descarga e instalación automática de .NET Framework 4.8.1 si era necesario."
+Write-Host "3. Detección de SDKs de .NET Core y .NET 5+ instalados."
+Write-Host "4. Instalación/actualización automática de .NET SDK 8 usando winget si está disponible."
+Write-Host "`n**Reinicia el sistema después de la actualización para aplicar los cambios correctamente.**" -ForegroundColor Magenta
