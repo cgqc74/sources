@@ -1,0 +1,80 @@
+<#
+    Script PowerShell: Busca en TODO el disco C: librerías .NET potencialmente vulnerables (.dll y paquetes NuGet).
+    - Escanea TODOS los directorios del disco C: (esto puede tardar mucho).
+    - Busca archivos DLL, project.assets.json y .csproj para reportar versiones y paquetes.
+    - Ejecuta como Administrador para acceso completo.
+    - Útil para auditorías globales de CVEs en equipos Windows.
+#>
+
+Write-Host "`n--- Escaneo GLOBAL de librerías .NET y paquetes NuGet en disco C: ---`n" -ForegroundColor Cyan
+
+# Buscar DLLs en todo C:
+try {
+    $dlls = Get-ChildItem -Path C:\ -Recurse -Include *.dll -ErrorAction SilentlyContinue -Force
+    if ($dlls) {
+        Write-Host "Librerías .NET encontradas en binarios (DLLs):" -ForegroundColor Yellow
+        foreach ($dll in $dlls) {
+            try {
+                $ver = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dll.FullName).FileVersion
+                Write-Host (" - {0} (versión: {1})" -f $dll.FullName, $ver)
+            } catch {
+                Write-Host (" - {0} (versión: desconocida)" -f $dll.FullName)
+            }
+        }
+    } else {
+        Write-Host "No se encontraron archivos DLL en C:\" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "Error accediendo a algunos directorios del disco C:. Ejecute como Administrador para mejor acceso." -ForegroundColor Red
+}
+
+# Buscar archivos project.assets.json en todo C:
+try {
+    $assetsFiles = Get-ChildItem -Path C:\ -Recurse -Include project.assets.json -ErrorAction SilentlyContinue -Force
+    if ($assetsFiles) {
+        Write-Host "`nPaquetes NuGet referenciados (project.assets.json):" -ForegroundColor Yellow
+        foreach ($assets in $assetsFiles) {
+            try {
+                $json = Get-Content $assets.FullName | ConvertFrom-Json
+                $libs = $json.libraries.Keys
+                foreach ($lib in $libs) {
+                    Write-Host " - $lib"
+                }
+            } catch {
+                Write-Host " - $($assets.FullName): Error leyendo el archivo."
+            }
+        }
+    } else {
+        Write-Host "`nNo se encontraron archivos project.assets.json en C:\" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "Error accediendo a algunos project.assets.json en C:." -ForegroundColor Red
+}
+
+# Buscar referencias NuGet en archivos .csproj en todo C:
+try {
+    $csprojs = Get-ChildItem -Path C:\ -Recurse -Include *.csproj -ErrorAction SilentlyContinue -Force
+    if ($csprojs) {
+        Write-Host "`nReferencias PackageReference en archivos .csproj:" -ForegroundColor Yellow
+        foreach ($csproj in $csprojs) {
+            try {
+                $proj = [xml](Get-Content $csproj.FullName)
+                $refs = $proj.Project.ItemGroup.PackageReference
+                foreach ($ref in $refs) {
+                    if ($ref.Include) {
+                        Write-Host " - $($ref.Include) (versión: $($ref.Version))"
+                    }
+                }
+            } catch {
+                Write-Host " - $($csproj.FullName): Error leyendo el archivo."
+            }
+        }
+    } else {
+        Write-Host "`nNo se encontraron archivos .csproj en C:\" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "Error accediendo a algunos archivos .csproj en C:." -ForegroundColor Red
+}
+
+Write-Host "`n--- Fin del escaneo GLOBAL ---`n" -ForegroundColor Cyan
+Write-Host "Revisa las librerías listadas y compáralas con los avisos de seguridad oficiales (MSRC, NVD, GitHub Advisories) para confirmar si están afectadas por algún CVE."
