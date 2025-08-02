@@ -1,0 +1,58 @@
+# Detectar todas las versiones de .NET Framework instaladas y sugerir actualización
+
+Write-Host "Detectando versiones instaladas de .NET Framework..." -ForegroundColor Cyan
+
+# Función para mostrar versión amigable desde Release DWORD
+function Get-DotNetFrameworkVersionFromRelease($release) {
+    switch ($release) {
+        { $_ -ge 533325 } { return ".NET Framework 4.8.1 o superior"; break }
+        { $_ -ge 528040 } { return ".NET Framework 4.8"; break }
+        { $_ -ge 461808 } { return ".NET Framework 4.7.2"; break }
+        { $_ -ge 461308 } { return ".NET Framework 4.7.1"; break }
+        { $_ -ge 460798 } { return ".NET Framework 4.7"; break }
+        { $_ -ge 394802 } { return ".NET Framework 4.6.2"; break }
+        { $_ -ge 394254 } { return ".NET Framework 4.6.1"; break }
+        { $_ -ge 393295 } { return ".NET Framework 4.6"; break }
+        { $_ -ge 379893 } { return ".NET Framework 4.5.2"; break }
+        { $_ -ge 378675 } { return ".NET Framework 4.5.1"; break }
+        { $_ -ge 378389 } { return ".NET Framework 4.5"; break }
+        default { return "Versión desconocida o anterior a 4.5" }
+    }
+}
+
+# Buscar en el registro todas las versiones de .NET Framework instaladas
+$netFrameworks = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse |
+    Get-ItemProperty -ErrorAction SilentlyContinue |
+    Where-Object { $_.Version -or $_.Release -or $_.PSChildName -match '^(?!S)\p{L}.*' } |
+    Select-Object PSChildName, Version, Release, Install, InstallPath
+
+$found = $false
+
+foreach ($fw in $netFrameworks) {
+    if ($fw.Version) {
+        Write-Host "Encontrada: $($fw.PSChildName)  Version: $($fw.Version)"
+        $found = $true
+    } elseif ($fw.Release) {
+        $ver = Get-DotNetFrameworkVersionFromRelease $fw.Release
+        Write-Host "Encontrada: $($fw.PSChildName)  Release: $($fw.Release)  [$ver]"
+        $found = $true
+    }
+}
+
+if (-not $found) {
+    Write-Host "No se detectaron versiones de .NET Framework instaladas." -ForegroundColor Yellow
+}
+
+# Sugerencia de actualización
+Write-Host "`nLa última versión disponible de .NET Framework es la 4.8.1 (agosto 2022)."
+Write-Host "Descárgala aquí: https://dotnet.microsoft.com/es-es/download/dotnet-framework/net481" -ForegroundColor Cyan
+
+# Extra: Detectar .NET Core y .NET 5+ instalados
+Write-Host "`nBuscando SDKs de .NET Core/.NET 5+ instalados..." -ForegroundColor Green
+if (Get-Command "dotnet" -ErrorAction SilentlyContinue) {
+    dotnet --list-sdks
+    Write-Host "Puedes actualizar .NET Core/.NET con winget: winget upgrade Microsoft.DotNet.SDK.8" -ForegroundColor Cyan
+    Write-Host "O desde: https://dotnet.microsoft.com/es-es/download" -ForegroundColor Cyan
+} else {
+    Write-Host "El comando 'dotnet' no está disponible en el PATH." -ForegroundColor Yellow
+}
