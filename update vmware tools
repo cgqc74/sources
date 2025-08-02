@@ -1,0 +1,25 @@
+# This script mounts VMware Tools installer ISO (if available) and runs a silent upgrade on Windows
+
+# 1. Look for the mounted VMware Tools installer (usually D: or E:)
+$cdDrive = Get-WmiObject Win32_CDROMDrive | Where-Object { $_.VolumeName -like "VMware Tools*" }
+
+if (-not $cdDrive) {
+    Write-Host "VMware Tools ISO is not mounted. Please use your hypervisor to mount the VMware Tools ISO to this VM." -ForegroundColor Yellow
+    exit 1
+}
+
+$driveLetter = $cdDrive.Drive
+$installerPath = Join-Path $driveLetter 'setup64.exe'
+
+if (-not (Test-Path $installerPath)) {
+    $installerPath = Join-Path $driveLetter 'setup.exe'
+}
+if (-not (Test-Path $installerPath)) {
+    Write-Host "No VMware Tools installer found on CD drive $driveLetter." -ForegroundColor Red
+    exit 2
+}
+
+Write-Host "Running VMware Tools installer silently from $installerPath..."
+Start-Process -FilePath $installerPath -ArgumentList '/S /v"/qn REBOOT=R"' -Wait
+
+Write-Host "VMware Tools update initiated. Please reboot the VM if required."
