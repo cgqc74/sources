@@ -1,8 +1,8 @@
-# Detectar todas las versiones de .NET Framework instaladas y sugerir actualización
+# Detectar todas las versiones de .NET Framework instaladas y actualizar automáticamente a la última versión (4.8.1)
+# Se requiere ejecutar como Administrador
 
 Write-Host "Detectando versiones instaladas de .NET Framework..." -ForegroundColor Cyan
 
-# Función para mostrar versión amigable desde Release DWORD
 function Get-DotNetFrameworkVersionFromRelease($release) {
     switch ($release) {
         { $_ -ge 533325 } { return ".NET Framework 4.8.1 o superior"; break }
@@ -27,6 +27,7 @@ $netFrameworks = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP
     Select-Object PSChildName, Version, Release, Install, InstallPath
 
 $found = $false
+$highestRelease = 0
 
 foreach ($fw in $netFrameworks) {
     if ($fw.Version) {
@@ -36,6 +37,7 @@ foreach ($fw in $netFrameworks) {
         $ver = Get-DotNetFrameworkVersionFromRelease $fw.Release
         Write-Host "Encontrada: $($fw.PSChildName)  Release: $($fw.Release)  [$ver]"
         $found = $true
+        if ($fw.Release -gt $highestRelease) { $highestRelease = $fw.Release }
     }
 }
 
@@ -43,9 +45,31 @@ if (-not $found) {
     Write-Host "No se detectaron versiones de .NET Framework instaladas." -ForegroundColor Yellow
 }
 
-# Sugerencia de actualización
-Write-Host "`nLa última versión disponible de .NET Framework es la 4.8.1 (agosto 2022)."
-Write-Host "Descárgala aquí: https://dotnet.microsoft.com/es-es/download/dotnet-framework/net481" -ForegroundColor Cyan
+# Comprobar si ya está instalada la última versión estable (4.8.1)
+$ultimaRelease = 533325 # Release key para 4.8.1
+if ($highestRelease -ge $ultimaRelease) {
+    Write-Host "`nYa tienes instalada la última versión de .NET Framework (4.8.1)." -ForegroundColor Green
+} else {
+    # Descargar e instalar automáticamente .NET Framework 4.8.1 (requiere internet y privilegios de admin)
+    Write-Host "`nActualizando automáticamente a .NET Framework 4.8.1..." -ForegroundColor Cyan
+
+    # URL oficial Microsoft para el instalador offline de 4.8.1
+    $url = "https://download.visualstudio.microsoft.com/download/pr/d0a0d32f-3e09-4a7c-8d2e-4e3a2f7e0e0b/ab6e1f5f7f6ed97b9d4a74c0cf1e2f46/ndp481-x86-x64-allos-enu.exe"
+    $file = "$env:TEMP\ndp481-x86-x64-allos-enu.exe"
+
+    Write-Host "Descargando instalador desde $url..."
+    Invoke-WebRequest -Uri $url -OutFile $file
+
+    if (Test-Path $file) {
+        Write-Host "Ejecutando instalador en modo silencioso..."
+        Start-Process -FilePath $file -ArgumentList "/quiet", "/norestart" -Wait
+
+        Write-Host "`nInstalación completada. Es recomendable reiniciar el equipo para finalizar la actualización de .NET Framework." -ForegroundColor Green
+        Remove-Item $file -Force
+    } else {
+        Write-Host "No se pudo descargar el instalador. Verifica tu conexión a internet." -ForegroundColor Red
+    }
+}
 
 # Extra: Detectar .NET Core y .NET 5+ instalados
 Write-Host "`nBuscando SDKs de .NET Core/.NET 5+ instalados..." -ForegroundColor Green
