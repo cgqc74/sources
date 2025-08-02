@@ -1,0 +1,48 @@
+# Requires Administrator privileges
+
+# Function to get VMware Tools uninstall string from registry
+function Get-VMwareToolsUninstallString {
+    $paths = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
+
+    foreach ($path in $paths) {
+        $keys = Get-ChildItem $path -ErrorAction SilentlyContinue
+        foreach ($key in $keys) {
+            $dispName = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).DisplayName
+            if ($dispName -and $dispName -like "VMware Tools*") {
+                $uninstallStr = (Get-ItemProperty $key.PSPath).UninstallString
+                if ($uninstallStr) {
+                    return $uninstallStr
+                }
+            }
+        }
+    }
+    return $null
+}
+
+if (-not ([bool](net session 2>$null))) {
+    Write-Host "You must run this script as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+$uninstallCmd = Get-VMwareToolsUninstallString
+
+if ($uninstallCmd) {
+    Write-Host "Uninstalling VMware Tools..."
+    # Clean up the uninstall string if it contains 'msiexec.exe /I' and switch to /x for uninstall
+    if ($uninstallCmd -match "msiexec\.exe\s+/I\s+(\S+)") {
+        $msiCode = $Matches[1]
+        $uninstallCmd = "msiexec.exe /x $msiCode /qn /norestart"
+    } elseif ($uninstallCmd -match "msiexec\.exe\s+/X") {
+        $uninstallCmd = "$uninstallCmd /qn /norestart"
+    } elseif ($uninstallCmd -match "\.exe") {
+        $uninstallCmd = "$uninstallCmd /S /qn /norestart"
+    }
+    Write-Host "Running: $uninstallCmd"
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c $uninstallCmd" -Wait
+    Write-Host "VMware Tools uninstall command issued. Please reboot if required."
+} else {
+    Write-Host "VMware Tools not found on this system." -ForegroundColor Yellow
+}
