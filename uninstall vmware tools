@@ -1,48 +1,47 @@
-# Requires Administrator privileges
+# Debe ejecutarse como Administrador
 
-# Function to get VMware Tools uninstall string from registry
 function Get-VMwareToolsUninstallString {
-    $paths = @(
-        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    $regPaths = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     )
-
-    foreach ($path in $paths) {
-        $keys = Get-ChildItem $path -ErrorAction SilentlyContinue
-        foreach ($key in $keys) {
-            $dispName = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).DisplayName
-            if ($dispName -and $dispName -like "VMware Tools*") {
-                $uninstallStr = (Get-ItemProperty $key.PSPath).UninstallString
-                if ($uninstallStr) {
-                    return $uninstallStr
-                }
+    foreach ($regPath in $regPaths) {
+        $apps = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+        foreach ($app in $apps) {
+            if ($app.DisplayName -and $app.DisplayName -like "VMware Tools*") {
+                return $app.UninstallString
             }
         }
     }
     return $null
 }
 
-if (-not ([bool](net session 2>$null))) {
-    Write-Host "You must run this script as Administrator." -ForegroundColor Red
+# Verifica privilegios de administrador
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Este script debe ejecutarse como administrador." -ForegroundColor Red
     exit 1
 }
 
-$uninstallCmd = Get-VMwareToolsUninstallString
+$uninstallString = Get-VMwareToolsUninstallString
 
-if ($uninstallCmd) {
-    Write-Host "Uninstalling VMware Tools..."
-    # Clean up the uninstall string if it contains 'msiexec.exe /I' and switch to /x for uninstall
-    if ($uninstallCmd -match "msiexec\.exe\s+/I\s+(\S+)") {
-        $msiCode = $Matches[1]
-        $uninstallCmd = "msiexec.exe /x $msiCode /qn /norestart"
-    } elseif ($uninstallCmd -match "msiexec\.exe\s+/X") {
-        $uninstallCmd = "$uninstallCmd /qn /norestart"
-    } elseif ($uninstallCmd -match "\.exe") {
-        $uninstallCmd = "$uninstallCmd /S /qn /norestart"
+if ($uninstallString) {
+    Write-Host "Desinstalando VMware Tools..."
+
+    # Limpia y prepara el comando para desinstalación silenciosa
+    if ($uninstallString -match "msiexec\.exe(.+)(\{[A-F0-9\-]+\})") {
+        $msiGuid = $Matches[2]
+        $cmd = "msiexec.exe /x $msiGuid /qn /norestart"
+    } elseif ($uninstallString -match "\.exe") {
+        # Si es un ejecutable, agrega switches silenciosos comunes
+        $cmd = "$uninstallString /S /qn /norestart"
+    } else {
+        $cmd = $uninstallString
     }
-    Write-Host "Running: $uninstallCmd"
-    Start-Process -FilePath "cmd.exe" -ArgumentList "/c $uninstallCmd" -Wait
-    Write-Host "VMware Tools uninstall command issued. Please reboot if required."
+
+    Write-Host "Ejecutando: $cmd"
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cmd" -Wait
+
+    Write-Host "Comando de desinstalación ejecutado. Reinicia el sistema si es necesario." -ForegroundColor Green
 } else {
-    Write-Host "VMware Tools not found on this system." -ForegroundColor Yellow
+    Write-Host "VMware Tools no se encuentra instalado en este sistema." -ForegroundColor Yellow
 }
