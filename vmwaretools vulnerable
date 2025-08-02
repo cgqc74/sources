@@ -1,0 +1,38 @@
+# CVE-2025-22247: Detect VMware Tools versions with insecure file handling
+# Update the $patchedVersion variable when new fixed versions are released
+
+# Directory to scan, update if necessary
+$ScanRoot = "C:\Program Files\VMware\VMware Tools"
+
+# Example: Suppose 12.4.0 is the fixed version (update as per advisories)
+$patchedVersion = [Version]"12.4.0"
+
+Write-Host "Scanning for VMware Tools binaries in $ScanRoot..." -ForegroundColor Cyan
+
+if (-Not (Test-Path $ScanRoot)) {
+    Write-Host "VMware Tools directory not found at $ScanRoot" -ForegroundColor Yellow
+    exit
+}
+
+# Files to check: main executables and DLLs
+$filePatterns = @("VMwareTools.exe", "vmtoolsd.exe", "vmtools.dll")
+
+foreach ($pattern in $filePatterns) {
+    $files = Get-ChildItem -Path $ScanRoot -Recurse -Include $pattern -ErrorAction SilentlyContinue
+    foreach ($file in $files) {
+        try {
+            $verInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($file.FullName)
+            $version = [Version]$verInfo.FileVersion
+            Write-Host "Found: $($file.FullName) (version $version)"
+            if ($version -lt $patchedVersion) {
+                Write-Host "  --> VULNERABLE: Update VMware Tools to $patchedVersion or later (CVE-2025-22247)." -ForegroundColor Red
+            } else {
+                Write-Host "  --> SAFE: Not affected by CVE-2025-22247." -ForegroundColor Green
+            }
+        } catch {
+            Write-Host "  --> Could not determine version for $($file.FullName)" -ForegroundColor Yellow
+        }
+    }
+}
+
+Write-Host "`nDone. For remediation, upgrade VMware Tools to the latest secure version. See: https://support.broadcom.com/web/ecx/support-content-notification/-/external/content/SecurityAdvisories/0/25683" -ForegroundColor Cyan
