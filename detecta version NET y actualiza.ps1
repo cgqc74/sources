@@ -94,14 +94,14 @@ function Get-PowerShellVersion {
 }
 
 function Update-PowerShell {
-    Write-Host "`n=== Instalando PowerShell 7.4.2 ==="
-    $url = "https://github.com/PowerShell/PowerShell/releases/download/v7.4.2/PowerShell-7.4.2-win-x64.msi"
-    $msi = "$env:TEMP\pwsh-7.4.2.msi"
+    Write-Host "`n=== Instalando PowerShell 7.5.2 ==="
+    $url = "https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
+    $msi = "$env:TEMP\pwsh-7.5.2.msi"
     try {
         Invoke-WebRequest -Uri $url -OutFile $msi -UseBasicParsing -TimeoutSec 60
         Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
         Remove-Item $msi -Force
-        Write-Host "✅ PowerShell actualizado a 7.4.2"
+        Write-Host "✅ PowerShell actualizado a 7.5.2"
     } catch {
         Write-Warning "❌ Error al actualizar PowerShell: $($_.Exception.Message)"
     }
@@ -138,3 +138,4 @@ if ($response -eq "s") {
 } else {
     Write-Host "⏹️ Proceso cancelado por el usuario."
 }
+
