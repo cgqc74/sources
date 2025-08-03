@@ -1,0 +1,166 @@
+# Uninstall-DotNetVersion.ps1
+# Script para desinstalar una versión específica de .NET Core / .NET Runtime en Windows
+# Basado en: https://dotnet.microsoft.com y análisis de CVEs
+
+# --- Requisitos: Ejecutar como Administrador ---
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "⚠️  Este script requiere ejecución como Administrador." -ForegroundColor Red
+    Write-Host "Abre PowerShell como Administrador e inténtalo de nuevo."
+    Start-Sleep -Seconds 5
+    exit 1
+}
+
+# --- Función: Obtener todas las versiones instaladas de .NET Core/Runtime ---
+function Get-InstalledDotNetVersions {
+    $paths = @(
+        "C:\Program Files\dotnet\shared\Microsoft.NETCore.App"
+        "C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App"
+        "C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App"
+    )
+    $versions = @()
+    foreach ($path in $paths) {
+        if (Test-Path $path) {
+            Get-ChildItem $path | ForEach-Object {
+                $product = Split-Path $path -Leaf
+                try {
+                    $versionObj = [version]$_.Name
+                    $versions += [PSCustomObject]@{
+                        Product = $product
+                        Version = $versionObj
+                        VersionString = $_.Name
+                        Path = $_.FullName
+                    }
+                } catch {
+                    Write-Warning "Versión inválida ignorada: $($_.Name)"
+                }
+            }
+        }
+    }
+    return $versions | Sort-Object Product, Version -Unique
+}
+
+# --- Función: Buscar paquetes .NET instalados en el registro (MSI) ---
+function Find-DotNetMSIPackages {
+    param([string]$Version)
+    $versionPattern = "^Microsoft .*(\b$Version)\b"
+    $uninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    $packages = Get-ChildItem -Path $uninstallKey -ErrorAction SilentlyContinue | ForEach-Object {
+        $displayName = (Get-ItemProperty -Path $_.PSPath).DisplayName
+        if ($displayName -match $versionPattern) {
+            $displayName = $displayName -replace "\s+", " "
+            [PSCustomObject]@{
+                DisplayName = $displayName
+                Version     = $Version
+                Key         = $_.PSPath
+                PackageCode = $_.PSChildName
+            }
+        }
+    }
+    return $packages
+}
+
+# --- Función: Desinstalar usando MsiExec ---
+function Uninstall-PackageByCode {
+    param([string]$PackageCode)
+    Write-Host "🚀 Desinstalando paquete MSI: $PackageCode..." -ForegroundColor Cyan
+    try {
+        $proc = Start-Process "msiexec.exe" -ArgumentList "/x", "$PackageCode", "/quiet", "/norestart" -Wait -PassThru
+        if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 1605) {
+            if ($proc.ExitCode -eq 1605) {
+                Write-Host "ℹ️  El paquete ya estaba desinstalado (Código: 1605)." -ForegroundColor Yellow
+            } else {
+                Write-Host "✅ Desinstalado correctamente." -ForegroundColor Green
+            }
+            return $true
+        } else {
+            Write-Error "❌ Error al desinstalar. Código de salida: $($proc.ExitCode)"
+            return $false
+        }
+    } catch {
+        Write-Error "❌ No se pudo ejecutar la desinstalación: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# --- Ejecución principal ---
+
+Write-Host "`n🔍 Buscando versiones instaladas de .NET..." -ForegroundColor Cyan
+$installed = Get-InstalledDotNetVersions
+
+if ($installed.Count -eq 0) {
+    Write-Host "❌ No se encontraron instalaciones de .NET." -ForegroundColor Red
+    exit 0
+}
+
+$installed | Format-Table Product, VersionString -AutoSize
+
+Write-Host "`n📝 Ingresa la versión exacta que deseas desinstalar (ej: 6.0.25):" -ForegroundColor Yellow
+$targetVersion = Read-Host "Versión"
+
+$match = $installed | Where-Object { $_.VersionString -eq $targetVersion }
+
+if (-not $match) {
+    Write-Host "❌ No se encontró la versión '$targetVersion' instalada." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "`n⚠️  Se encontró: $($match.Product) v$($match.VersionString)" -ForegroundColor Yellow
+
+Write-Host "`n¿Estás seguro de que deseas desinstalar esta versión? (s/n)" -ForegroundColor Red
+$confirm = Read-Host
+if ($confirm -notmatch 's|y') {
+    Write-Host "❌ Operación cancelada." -ForegroundColor Green
+    exit 0
+}
+
+# Buscar paquetes MSI asociados
+Write-Host "`n🔎 Buscando paquetes MSI para v$targetVersion..." -ForegroundColor Cyan
+$packages = Find-DotNetMSIPackages -Version $targetVersion
+
+if ($packages.Count -eq 0) {
+    Write-Host "❌ No se encontró ningún paquete MSI para la versión '$targetVersion'." -ForegroundColor Red
+    Write-Host "Puede que ya haya sido desinstalado o que no use MSI (poco común)." -ForegroundColor Yellow
+    exit 1
+}
+
+$packages | Format-Table DisplayName, Version -AutoSize
+
+Write-Host "`n¿Deseas proceder con la desinstalación de estos paquetes? (s/n)" -ForegroundColor Magenta
+$proceed = Read-Host
+if ($proceed -notmatch 's|y') {
+    Write-Host "Operación cancelada." -ForegroundColor Green
+    exit 0
+}
+
+# Desinstalar cada paquete encontrado
+foreach ($pkg in $packages) {
+    Uninstall-PackageByCode -PackageCode $pkg.PackageCode
+}
+
+# Verificar si aún existe la carpeta
+$dotnetPath = "C:\Program Files\dotnet"
+$sharedPath = "$dotnetPath\shared"
+$orphanedFolders = @()
+
+foreach ($product in @("Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App", "Microsoft.AspNetCore.App")) {
+    $path = "$sharedPath\$product\$targetVersion"
+    if (Test-Path $path) {
+        $orphanedFolders += $path
+    }
+}
+
+if ($orphanedFolders.Count -gt 0) {
+    Write-Host "`n📁 Carpetas huérfanas encontradas (puedes eliminarlas manualmente):" -ForegroundColor Yellow
+    $orphanedFolders | ForEach-Object { Write-Host "  $_" }
+
+    Write-Host "`n¿Eliminar estas carpetas ahora? (s/n)" -ForegroundColor Cyan
+    $delete = Read-Host
+    if ($delete -match 's|y') {
+        $orphanedFolders | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "🗑️  Carpetas eliminadas." -ForegroundColor Green
+    }
+}
+
+Write-Host "`n✅ Desinstalación completada para .NET v$targetVersion." -ForegroundColor Green
+Write-Host "💡 Recuerda reiniciar los servicios o aplicaciones afectadas si es necesario." -ForegroundColor White
