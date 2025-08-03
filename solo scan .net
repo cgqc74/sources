@@ -1,0 +1,57 @@
+Write-Host "`n🔍 Detectando todas las versiones de .NET instaladas..." -ForegroundColor Cyan
+
+function Get-DotNetCliVersions {
+    $dotnetPath = "${env:ProgramFiles}\dotnet\dotnet.exe"
+    if (-not (Test-Path $dotnetPath)) {
+        Write-Warning "❌ No se encontró 'dotnet.exe'."
+        return
+    }
+
+    Write-Host "`n📦 SDKs instalados (via CLI):"
+    & $dotnetPath --list-sdks | ForEach-Object { "   - $_" }
+
+    Write-Host "`n⚙️ Runtimes instalados (via CLI):"
+    & $dotnetPath --list-runtimes | ForEach-Object { "   - $_" }
+}
+
+function Get-DotNetFrameworkVersions {
+    $frameworkKey = "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP"
+    Write-Host "`n🗂 .NET Framework instalado (vía Registro):"
+
+    Get-ChildItem -Path $frameworkKey -Recurse |
+    Where-Object { $_.GetValue("Version") -ne $null } |
+    ForEach-Object {
+        $ver = $_.GetValue("Version")
+        $sp = $_.GetValue("SP")
+        $install = $_.GetValue("Install")
+        if ($install -eq 1 -or $install -eq $null) {
+            Write-Host "   - $($_.PSChildName): $ver (SP: $sp)"
+        }
+    }
+}
+
+function Get-DotNetFolders {
+    $paths = @(
+        "$env:ProgramFiles\dotnet\sdk",
+        "$env:ProgramFiles\dotnet\shared\Microsoft.NETCore.App",
+        "$env:ProgramFiles\dotnet\shared\Microsoft.AspNetCore.App",
+        "$env:ProgramFiles\dotnet\shared\Microsoft.WindowsDesktop.App"
+    )
+
+    foreach ($path in $paths) {
+        if (Test-Path $path) {
+            $folderName = Split-Path $path -Leaf
+            Write-Host "`n📁 Detectado en carpeta: $folderName"
+            Get-ChildItem -Directory $path | ForEach-Object {
+                Write-Host "   - $($_.Name)"
+            }
+        }
+    }
+}
+
+# ================= EJECUCIÓN ==================
+Get-DotNetCliVersions
+Get-DotNetFrameworkVersions
+Get-DotNetFolders
+
+Write-Host "`n✅ Detección finalizada." -ForegroundColor Green
