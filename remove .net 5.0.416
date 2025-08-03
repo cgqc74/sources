@@ -1,0 +1,23 @@
+# Requiere privilegios de administrador
+$targetVersion = "5.0.416"
+
+# Buscar en el registro las versiones instaladas del SDK y runtime
+$uninstallKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+)
+
+Write-Host "🔍 Buscando .NET SDK/Runtime versión $targetVersion..."
+
+$found = $false
+foreach ($key in $uninstallKeys) {
+    Get-ItemProperty -Path $key -ErrorAction SilentlyContinue |
+    Where-Object { ($_.DisplayName -like "*5.0.416*") -and $_.UninstallString } |
+    ForEach-Object {
+        $found = $true
+        Write-Host "🧹 Desinstalando: $($_.DisplayName)"
+        $uninstallCmd = $_.UninstallString
+
+        # Si es MSIEXEC
+        if ($uninstallCmd -like "msiexec*") {
+            Start-Process "msiexec.exe" -ArgumentLi
