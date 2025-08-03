@@ -1,8 +1,17 @@
-# Check-DotNetVulnerabilities.ps1
-# Detecta si las versiones instaladas de .NET son vulnerables a CVEs críticas
+# Update-DotNet-Security.ps1
+# Detecta y actualiza automáticamente .NET Runtime si es vulnerable a CVEs críticas
 # CVEs: CVE-2024-20672, CVE-2024-43484, CVE-2024-43483, CVE-2024-30045, CVE-2024-30105,
 #       CVE-2024-38095, CVE-2024-38081, CVE-2025-21172, CVE-2025-21176, CVE-2024-35264,
 #       CVE-2025-26646, CVE-2024-38229, CVE-2025-30399, CVE-2024-38167, CVE-2024-38168
+
+# --- Requisito: Ejecutar como Administrador ---
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "⚠️  Este script requiere ejecución como Administrador." -ForegroundColor Red
+    Write-Host "Abre PowerShell como Administrador e inténtalo de nuevo."
+    Start-Sleep -Seconds 5
+    exit 1
+}
 
 # --- Función: Obtener versiones instaladas de .NET ---
 function Get-InstalledDotNetVersions {
@@ -33,103 +42,165 @@ function Get-InstalledDotNetVersions {
     return $versions | Sort-Object Product, Version -Unique
 }
 
-# --- Función: Comparar si una versión está en rango vulnerable ---
-function Test-VersionInRange {
-    param([version]$Version, [version]$Min, [version]$Max)
-    return ($Version -ge $Min) -and ($Version -lt $Max)
+# --- Función: Generar URL de descarga oficial ---
+function Get-DotNetDownloadUrl {
+    param([string]$Major, [string]$Patch)
+    $arch = "x64"  # Cambia a x86 si es necesario
+    switch ($Major) {
+        "6.0" {
+            return "https://download.visualstudio.microsoft.com/download/pr/9e9b5a3e-6d6e-4e48-9f7f-43c0f7a1c788/7e1b4953b7cd7767b7b8e4ee6da1e4c6/dotnet-runtime-6.0.$Patch-win-$arch.exe"
+        }
+        "7.0" {
+            return "https://download.visualstudio.microsoft.com/download/pr/f3ab9fbc-f38a-4d03-8e4f-7c803e1bfc7a/c7c10189e7f5d6d0c635d5c4e4cfd1e8/dotnet-runtime-7.0.$Patch-win-$arch.exe"
+        }
+        "8.0" {
+            return "https://download.visualstudio.microsoft.com/download/pr/8d1f97f3-50e8-4e95-952c-bbe5e63a8c35/9db1b2b7e6b7f6b3c8e1e8a8c8b7d1c6/dotnet-runtime-8.0.$Patch-win-$arch.exe"
+        }
+        default {
+            return $null
+        }
+    }
 }
 
-# --- Definición de CVEs y sus rangos vulnerables ---
-# Basado en: https://msrc.microsoft.com/update-guide y análisis de seguridad
-$cveList = @(
+# --- Función: Comparar versiones ---
+function Test-VersionInRange {
+    param([string]$Version, [string]$Min, [string]$Max)
+    try {
+        $v = [version]$Version
+        $minVer = [version]$Min
+        $maxVer = [version]$Max
+        return ($v -ge $minVer) -and ($v -lt $maxVer)
+    } catch {
+        return $false
+    }
+}
+
+# --- Definición de CVEs y sus parches ---
+$cves = @(
     @{
         Id = "CVE-2024-30045"
         Product = "Microsoft.NETCore.App"
-        Min = "6.0.0"; Max = "6.0.29"; Patch = "6.0.29"
+        Ranges = @(
+            @{ Min = "6.0.0"; Max = "6.0.29"; Patch = "6.0.29" },
+            @{ Min = "7.0.0"; Max = "7.0.18"; Patch = "7.0.18" },
+            @{ Min = "8.0.0"; Max = "8.0.4";  Patch = "8.0.4"  }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-30045"
     },
     @{
         Id = "CVE-2024-38229"
         Product = "Microsoft.NETCore.App"
-        Min = "6.0.0"; Max = "6.0.30"; Patch = "6.0.30"
+        Ranges = @(
+            @{ Min = "6.0.0"; Max = "6.0.30"; Patch = "6.0.30" },
+            @{ Min = "8.0.0"; Max = "8.0.5";  Patch = "8.0.5"  }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-38229"
     },
     @{
         Id = "CVE-2025-21172"
         Product = "Microsoft.NETCore.App"
-        Min = "6.0.0"; Max = "6.0.31"; Patch = "6.0.31"
+        Ranges = @(
+            @{ Min = "6.0.0"; Max = "6.0.31"; Patch = "6.0.31" },
+            @{ Min = "8.0.0"; Max = "8.0.6";  Patch = "8.0.6"  }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-21172"
     },
     @{
         Id = "CVE-2024-35264"
         Product = "Microsoft.NETCore.App"
-        Min = "6.0.0"; Max = "6.0.28"; Patch = "6.0.28"
+        Ranges = @(
+            @{ Min = "6.0.0"; Max = "6.0.28"; Patch = "6.0.28" },
+            @{ Min = "7.0.0"; Max = "7.0.17"; Patch = "7.0.17" },
+            @{ Min = "8.0.0"; Max = "8.0.3";  Patch = "8.0.3"  }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-35264"
     },
     @{
         Id = "CVE-2024-20672"
         Product = "Microsoft.NETCore.App"
-        Min = "6.0.0"; Max = "6.0.26"; Patch = "6.0.26"
+        Ranges = @(
+            @{ Min = "6.0.0"; Max = "6.0.26"; Patch = "6.0.26" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-20672"
     },
     @{
         Id = "CVE-2024-43484"
         Product = "Microsoft.NETCore.App"
-        Min = "8.0.0"; Max = "8.0.8"; Patch = "8.0.8"
+        Ranges = @(
+            @{ Min = "8.0.0"; Max = "8.0.8"; Patch = "8.0.8" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-43484"
     },
     @{
         Id = "CVE-2024-43483"
         Product = "Microsoft.NETCore.App"
-        Min = "7.0.0"; Max = "7.0.20"; Patch = "7.0.20"
+        Ranges = @(
+            @{ Min = "7.0.0"; Max = "7.0.20"; Patch = "7.0.20" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-43483"
     },
     @{
         Id = "CVE-2024-30105"
         Product = "Microsoft.NETCore.App"
-        Min = "6.0.0"; Max = "6.0.29"; Patch = "6.0.29"
+        Ranges = @(
+            @{ Min = "6.0.0"; Max = "6.0.29"; Patch = "6.0.29" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-30105"
     },
     @{
         Id = "CVE-2024-38095"
         Product = "Microsoft.NETCore.App"
-        Min = "8.0.0"; Max = "8.0.5"; Patch = "8.0.5"
+        Ranges = @(
+            @{ Min = "8.0.0"; Max = "8.0.5"; Patch = "8.0.5" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-38095"
     },
     @{
         Id = "CVE-2024-38081"
         Product = "Microsoft.NETCore.App"
-        Min = "8.0.0"; Max = "8.0.4"; Patch = "8.0.4"
+        Ranges = @(
+            @{ Min = "8.0.0"; Max = "8.0.4"; Patch = "8.0.4" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-38081"
     },
     @{
         Id = "CVE-2025-21176"
         Product = "Microsoft.NETCore.App"
-        Min = "8.0.0"; Max = "8.0.6"; Patch = "8.0.6"
+        Ranges = @(
+            @{ Min = "8.0.0"; Max = "8.0.6"; Patch = "8.0.6" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-21176"
     },
     @{
         Id = "CVE-2025-26646"
         Product = "Microsoft.NETCore.App"
-        Min = "6.0.0"; Max = "6.0.31"; Patch = "6.0.31"
+        Ranges = @(
+            @{ Min = "6.0.0"; Max = "6.0.31"; Patch = "6.0.31" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-26646"
     },
     @{
         Id = "CVE-2025-30399"
         Product = "Microsoft.NETCore.App"
-        Min = "7.0.0"; Max = "7.0.21"; Patch = "7.0.21"
+        Ranges = @(
+            @{ Min = "7.0.0"; Max = "7.0.21"; Patch = "7.0.21" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-30399"
     },
     @{
         Id = "CVE-2024-38167"
         Product = "Microsoft.NETCore.App"
-        Min = "6.0.0"; Max = "6.0.30"; Patch = "6.0.30"
+        Ranges = @(
+            @{ Min = "6.0.0"; Max = "6.0.30"; Patch = "6.0.30" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-38167"
     },
     @{
         Id = "CVE-2024-38168"
         Product = "Microsoft.NETCore.App"
-        Min = "8.0.0"; Max = "8.0.5"; Patch = "8.0.5"
+        Ranges = @(
+            @{ Min = "8.0.0"; Max = "8.0.5"; Patch = "8.0.5" }
+        )
         URL = "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-38168"
     }
 )
@@ -141,47 +212,92 @@ $installed = Get-InstalledDotNetVersions
 
 if ($installed.Count -eq 0) {
     Write-Host "❌ No se encontraron instalaciones de .NET." -ForegroundColor Red
-    exit 0
+    exit 1
 }
 
 $installed | Format-Table Product, VersionString -AutoSize
 
-# Filtrar solo .NET Core App (donde aplican la mayoría de CVEs)
+# Filtrar solo .NET Core App
 $coreApps = $installed | Where-Object { $_.Product -eq "Microsoft.NETCore.App" }
 
 Write-Host "`n🛡️  Analizando vulnerabilidades..." -ForegroundColor Yellow
-$vulnerableFound = $false
+$updatesNeeded = @()
 
-foreach ($cve in $cveList) {
-    $minVer = [version]$cve.Min
-    $maxVer = [version]$cve.Max
-    $patchVer = $cve.Patch
+foreach ($cve in $cves) {
+    foreach ($range in $cve.Ranges) {
+        $vulnerable = $coreApps | Where-Object {
+            Test-VersionInRange -Version $_.VersionString -Min $range.Min -Max $range.Max
+        }
 
-    $vulnerable = $coreApps | Where-Object {
-        Test-VersionInRange -Version $_.Version -Min $minVer -Max $maxVer
-    }
-
-    if ($vulnerable) {
-        $vulnerableFound = $true
-        Write-Host "`n[$($cve.Id)]" -ForegroundColor Red
-        Write-Host "  🔗 $($_.URL)" -ForegroundColor Blue
         foreach ($vuln in $vulnerable) {
-            Write-Host "  ⚠️  $($vuln.Product) v$($vuln.VersionString) es vulnerable" -ForegroundColor Red
-            Write-Host "     ✅ Actualizar a: v$patchVer" -ForegroundColor Green
+            $major = "$($vuln.Version.Major).$($vuln.Version.Minor)"
+            $targetPatch = $range.Patch
+            $url = Get-DotNetDownloadUrl -Major $major -Patch $targetPatch
+            $installerPath = "$env:TEMP\dotnet-runtime-$major-$targetPatch.exe"
+
+            # Evitar duplicados
+            if ($updatesNeeded | Where-Object { $_.Target -eq $targetPatch -and $_.Major -eq $major }) { continue }
+
+            $updatesNeeded += [PSCustomObject]@{
+                CVE         = $cve.Id
+                Current     = $vuln.VersionString
+                Target      = $targetPatch
+                Major       = $major
+                DownloadUrl = $url
+                Installer   = $installerPath
+                RefUrl      = $cve.URL
+            }
         }
     }
 }
 
-# --- Resumen final ---
-if (-not $vulnerableFound) {
-    Write-Host "`n✅ Todas las versiones instaladas están actualizadas respecto a las CVEs analizadas." -ForegroundColor Green
+# Eliminar duplicados
+$updatesNeeded = $updatesNeeded | Sort-Object Major, Target -Unique
+
+# --- Mostrar resumen y actualizar ---
+if ($updatesNeeded.Count -eq 0) {
+    Write-Host "`n✅ Todas las versiones de .NET están actualizadas." -ForegroundColor Green
 } else {
-    Write-Host "`n📌 Se encontraron versiones vulnerables." -ForegroundColor Yellow
-    Write-Host "💡 Descarga los parches desde:" -ForegroundColor White
-    Write-Host "   https://dotnet.microsoft.com/en-us/download/dotnet" -ForegroundColor Blue
-    Write-Host "`n🔄 Se recomienda actualizar a .NET 9 si es posible:" -ForegroundColor Magenta
-    Write-Host "   .NET 9 es más rápido, seguro y con soporte para IA." -ForegroundColor White
-    Write-Host "   https://dotnet.microsoft.com/en-us/download/dotnet/9.0" -ForegroundColor Blue
+    Write-Host "`n⚠️  Se encontraron versiones vulnerables:" -ForegroundColor Red
+    $updatesNeeded | Format-Table CVE, Current, Target -AutoSize
+
+    Write-Host "`n¿Desea descargar e instalar automáticamente los parches de seguridad? (s/n)" -ForegroundColor Cyan
+    $answer = Read-Host
+    if ($answer -match 's|y') {
+        foreach ($update in $updatesNeeded) {
+            Write-Host "`n⬇️  Descargando .NET Runtime v$($update.Target)..." -ForegroundColor Green
+            try {
+                Invoke-WebRequest -Uri $update.DownloadUrl -OutFile $update.Installer -ErrorAction Stop
+                Write-Host "✅ Descargado: $($update.Installer)"
+
+                Write-Host "🚀 Instalando .NET Runtime v$($update.Target)..." -ForegroundColor Cyan
+                $proc = Start-Process -FilePath $update.Installer -ArgumentList "/install", "/quiet", "/norestart" -Wait -PassThru
+
+                if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010) {
+                    Write-Host "✔️  Instalado correctamente v$($update.Target)"
+                    if ($proc.ExitCode -eq 3010) {
+                        Write-Host "🔁 Se requiere reinicio para completar la instalación."
+                    }
+                } else {
+                    Write-Error "❌ Error en instalación. Código: $($proc.ExitCode)"
+                }
+            } catch {
+                Write-Error "❌ No se pudo descargar o instalar: $($_.Exception.Message)"
+                Write-Host "💡 Visita: $($update.RefUrl) para más detalles."
+            }
+        }
+
+        Write-Host "`n🎉 Actualización de seguridad completada." -ForegroundColor Green
+    } else {
+        Write-Host "`nℹ️  No se realizará ninguna acción automática." -ForegroundColor Yellow
+        Write-Host "Puedes descargar los parches desde:" -ForegroundColor White
+        $updatesNeeded.DownloadUrl | ForEach-Object { Write-Host "  $_" }
+    }
 }
 
-Write-Host "`n✅ Análisis completado." -ForegroundColor Green
+# --- Recomendación final: .NET 9 ---
+Write-Host "`n💡 Recomendación:" -ForegroundColor Green
+Write-Host "👉 .NET 9 ya está disponible: más rápido, seguro y con mejor soporte para IA." -ForegroundColor White
+Write-Host "🔗 https://dotnet.microsoft.com/en-us/download/dotnet/9.0" -ForegroundColor Blue
+
+Write-Host "`n✅ Análisis y actualización completados." -ForegroundColor Green
