@@ -1,0 +1,107 @@
+# ---------------- CONFIG -----------------
+$netVersions = @{
+    "sdk"     = "https://dotnetcli.azureedge.net/dotnet/Sdk/latest.version"
+    "runtime" = "https://dotnetcli.azureedge.net/dotnet/Runtime/latest.version"
+}
+$pwsLatestVersion = "7.5.2"
+$pwsInstallerUrl = "https://github.com/PowerShell/PowerShell/releases/download/v$pwsLatestVersion/PowerShell-$pwsLatestVersion-win-x64.msi"
+# ----------------------------------------
+
+function Get-InstalledDotNet {
+    $dotnet = "${env:ProgramFiles}\dotnet\dotnet.exe"
+    if (-not (Test-Path $dotnet)) {
+        Write-Warning "❌ .NET no está instalado."
+        return
+    }
+
+    Write-Host "🔍 Buscando versiones de .NET SDK instaladas..."
+    & $dotnet --list-sdks | ForEach-Object {
+        [PSCustomObject]@{
+            Type    = "SDK"
+            Version = ($_ -split '\s+\[')[0]
+        }
+    }
+
+    Write-Host "🔍 Buscando versiones de .NET Runtime instaladas..."
+    & $dotnet --list-runtimes | ForEach-Object {
+        [PSCustomObject]@{
+            Type    = "Runtime"
+            Version = ($_ -split '\s+\[')[0]
+        }
+    }
+}
+
+function Get-LatestDotNetVersions {
+    Write-Host "🌐 Obteniendo últimas versiones .NET..."
+    $latest = @{}
+    foreach ($type in $netVersions.Keys) {
+        $url = $netVersions[$type]
+        try {
+            $version = Invoke-RestMethod -Uri $url -UseBasicParsing
+            $latest[$type] = [version]$version
+        } catch {
+            Write-Warning "⚠️ No se pudo obtener la versión más reciente para $type"
+        }
+    }
+    return $latest
+}
+
+function Uninstall-OldDotNet {
+    $installed = Get-InstalledDotNet
+    $latest = Get-LatestDotNetVersions
+
+    foreach ($item in $installed) {
+        $version = [version]$item.Version
+        if ($item.Type -eq "SDK" -and $version -lt $latest["sdk"]) {
+            Write-Host "🧹 Eliminando .NET SDK $version"
+            & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Command "dotnet-core-uninstall remove --sdk $version"
+        }
+        elseif ($item.Type -eq "Runtime" -and $version -lt $latest["runtime"]) {
+            Write-Host "🧹 Eliminando .NET Runtime $version"
+            & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Command "dotnet-core-uninstall remove --runtime $version"
+        }
+    }
+}
+
+function Install-LatestDotNet {
+    $latest = Get-LatestDotNetVersions
+    foreach ($type in $latest.Keys) {
+        $v = $latest[$type].ToString()
+        $url = "https://dotnet.microsoft.com/en-us/download/dotnet/$v"
+        Write-Host "🔗 Visita para instalar $type $v: $url"
+        Start-Process $url
+    }
+}
+
+function Get-InstalledPwshVersion {
+    $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
+    if (Test-Path $pwshPath) {
+        & $pwshPath -Command '$PSVersionTable.PSVersion.ToString()'
+    } else {
+        return $null
+    }
+}
+
+function Update-PowerShell {
+    $current = Get-InstalledPwshVersion
+    if ($null -eq $current) {
+        Write-Host "🆕 PowerShell no instalado. Se instalará v$pwsLatestVersion"
+    } elseif ([version]$current -ge [version]$pwsLatestVersion) {
+        Write-Host "✅ Ya tienes PowerShell $current (última versión)."
+        return
+    } else {
+        Write-Host "🔁 Actualizando PowerShell de $current a $pwsLatestVersion..."
+    }
+
+    $msiPath = "$env:TEMP\PowerShell-$pwsLatestVersion.msi"
+    Invoke-WebRequest $pwsInstallerUrl -OutFile $msiPath
+    Start-Process "msiexec.exe" -ArgumentList "/i", "`"$msiPath`"", "/quiet", "/norestart" -Wait
+    Remove-Item $msiPath -Force
+    Write-Host "✅ PowerShell actualizado a $pwsLatestVersion"
+}
+
+# 🔧 EJECUCIÓN
+Write-Host "=== 🔄 ACTUALIZADOR DE POWERSHELL Y .NET ==="
+Update-PowerShell
+Uninstall-OldDotNet
+Install-LatestDotNet
