@@ -1,0 +1,51 @@
+# Requiere PowerShell 5+ y .NET Core SDK instalado
+
+# Ruta base donde buscar proyectos (puedes cambiarla)
+$searchPath = "C:\"
+
+# Buscar todos los archivos de solución y proyecto .NET
+Write-Host "Buscando archivos de proyecto (.csproj, .vbproj, .fsproj) y soluciones (.sln) en $searchPath ..."
+$projectFiles = Get-ChildItem -Path $searchPath -Recurse -Include *.csproj,*.vbproj,*.fsproj,*.sln -ErrorAction SilentlyContinue
+
+if ($projectFiles.Count -eq 0) {
+    Write-Host "No se encontraron proyectos .NET en $searchPath"
+    exit 1
+}
+
+# Verificar que dotnet esté instalado
+if (-not (Get-Command "dotnet" -ErrorAction SilentlyContinue)) {
+    Write-Host "El SDK de .NET no está instalado. Por favor instálalo primero."
+    exit 1
+}
+
+# Escanear cada proyecto
+foreach ($proj in $projectFiles) {
+    Write-Host "`nEscaneando $($proj.FullName) ..." -ForegroundColor Cyan
+    $projDir = Split-Path $proj.FullName
+
+    # Buscar vulnerabilidades con dotnet CLI
+    try {
+        Set-Location $projDir
+        dotnet list package --vulnerable
+    } catch {
+        Write-Host "Error al analizar $($proj.FullName): $_" -ForegroundColor Red
+    }
+}
+
+# (Opcional) Usar NuGetDefense para un chequeo más exhaustivo
+# Requiere dotnet tool install --global NuGetDefense
+if (Get-Command "nugetdefense" -ErrorAction SilentlyContinue) {
+    foreach ($proj in $projectFiles) {
+        Write-Host "`nAnalizando con NuGetDefense: $($proj.FullName) ..." -ForegroundColor Yellow
+        try {
+            nugetdefense $proj.FullName
+        } catch {
+            Write-Host "Error con NuGetDefense en $($proj.FullName): $_" -ForegroundColor Red
+        }
+    }
+} else {
+    Write-Host "`nNuGetDefense no está instalado. Para un análisis más exhaustivo, ejecuta:"
+    Write-Host "dotnet tool install --global NuGetDefense" -ForegroundColor Yellow
+}
+
+Write-Host "`nAnálisis completado."
