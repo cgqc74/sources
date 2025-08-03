@@ -1,0 +1,193 @@
+# Update-DotNet-To-Latest.ps1
+# Actualiza .NET a la última versión y elimina versiones antiguas
+# Basado en: https://dotnet.microsoft.com (anuncia .NET 9 como la versión más reciente)
+
+# --- Requisito: Ejecutar como Administrador ---
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "⚠️  Este script requiere ejecución como Administrador." -ForegroundColor Red
+    Write-Host "Abre PowerShell como Administrador e inténtalo de nuevo."
+    Start-Sleep -Seconds 5
+    exit 1
+}
+
+# --- Función: Obtener versiones instaladas de .NET ---
+function Get-InstalledDotNetVersions {
+    $paths = @(
+        "C:\Program Files\dotnet\shared\Microsoft.NETCore.App"
+        "C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App"
+        "C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App"
+    )
+    $versions = @()
+    foreach ($path in $paths) {
+        if (Test-Path $path) {
+            Get-ChildItem $path | ForEach-Object {
+                $product = Split-Path $path -Leaf
+                try {
+                    $versionObj = [version]$_.Name
+                    $versions += [PSCustomObject]@{
+                        Product = $product
+                        Version = $versionObj
+                        VersionString = $_.Name
+                        Path = $_.FullName
+                    }
+                } catch {
+                    Write-Warning "Versión inválida ignorada: $($_.Name)"
+                }
+            }
+        }
+    }
+    return $versions | Sort-Object Product, Version -Unique
+}
+
+# --- Función: Buscar paquetes MSI en el registro para desinstalar ---
+function Find-DotNetMSIPackages {
+    param([string]$Version)
+    $uninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    $packages = Get-ChildItem -Path $uninstallKey -ErrorAction SilentlyContinue | ForEach-Object {
+        $displayName = (Get-ItemProperty -Path $_.PSPath).DisplayName
+        if ($displayName -match [regex]::Escape($Version)) {
+            [PSCustomObject]@{
+                DisplayName = $displayName
+                Version     = $Version
+                PackageCode = $_.PSChildName
+            }
+        }
+    }
+    return $packages
+}
+
+# --- Función: Desinstalar usando MsiExec ---
+function Uninstall-PackageByCode {
+    param([string]$PackageCode)
+    try {
+        $proc = Start-Process "msiexec.exe" -ArgumentList "/x", "$PackageCode", "/quiet", "/norestart" -Wait -PassThru
+        return ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 1605)  # 1605 = ya desinstalado
+    } catch {
+        return $false
+    }
+}
+
+# --- Función: Generar URL de descarga de .NET 9 ---
+function Get-LatestDotNetUrl {
+    $arch = "x64"  # Cambia a x86 si es necesario
+    return "https://download.visualstudio.microsoft.com/download/pr/8d1f97f3-50e8-4e95-952c-bbe5e63a8c35/9db1b2b7e6b7f6b3c8e1e8a8c8b7d1c6/dotnet-runtime-9.0.0-win-$arch.exe"
+}
+
+# --- Ejecución principal ---
+
+Write-Host "`n🔍 Escaneando versiones de .NET instaladas..." -ForegroundColor Cyan
+$installed = Get-InstalledDotNetVersions
+
+if ($installed.Count -eq 0) {
+    Write-Host "❌ No se encontraron instalaciones de .NET." -ForegroundColor Red
+    exit 0
+}
+
+$installed | Format-Table Product, VersionString -AutoSize
+
+# Filtrar solo .NET Core App para análisis
+$coreApps = $installed | Where-Object { $_.Product -eq "Microsoft.NETCore.App" }
+
+# Obtener la versión más reciente instalada
+$currentLatest = $coreApps | Sort-Object Version -Descending | Select-Object -First 1
+
+Write-Host "`n📦 Versión más reciente instalada: v$($currentLatest.VersionString)" -ForegroundColor Green
+
+# --- Preguntar si actualizar a .NET 9 ---
+Write-Host "`n💡 .NET 9 ya está disponible: más rápido, seguro y con mejor soporte para IA." -ForegroundColor Green
+Write-Host "🔗 https://dotnet.microsoft.com/en-us/download/dotnet/9.0" -ForegroundColor Blue
+
+$upgradeTo9 = Read-Host "`n¿Deseas instalar .NET 9 (última versión)? (s/n)"
+$dotnet9Installed = $false
+
+if ($upgradeTo9 -match 's|y') {
+    $url = Get-LatestDotNetUrl
+    $installer = "$env:TEMP\dotnet-runtime-9.0.0-win-x64.exe"
+
+    Write-Host "⬇️  Descargando .NET 9 Runtime..." -ForegroundColor Green
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $installer -ErrorAction Stop
+        Write-Host "✅ Descargado: $installer"
+
+        Write-Host "🚀 Instalando .NET 9..." -ForegroundColor Cyan
+        $proc = Start-Process -FilePath $installer -ArgumentList "/install", "/quiet", "/norestart" -Wait -PassThru
+
+        if ($proc.ExitCode -in @(0, 3010)) {
+            Write-Host "🎉 ¡.NET 9 instalado correctamente!" -ForegroundColor Green
+            $dotnet9Installed = $true
+        } else {
+            Write-Error "❌ Error al instalar .NET 9. Código: $($proc.ExitCode)"
+        }
+    } catch {
+        Write-Error "❌ No se pudo descargar .NET 9: $($_.Exception.Message)"
+        Write-Host "💡 Descarga manual: https://dotnet.microsoft.com/en-us/download/dotnet/9.0"
+    }
+}
+
+# --- Eliminar versiones antiguas ---
+$targetVersion = if ($dotnet9Installed) { [version]"9.0.0" } else { $currentLatest.Version }
+
+Write-Host "`n🗑️  ¿Deseas eliminar versiones antiguas de .NET Core? (menores a v$targetVersion)" -ForegroundColor Yellow
+$removeOld = Read-Host "(s/n)"
+
+if ($removeOld -notmatch 's|y') {
+    Write-Host "Operación cancelada. No se eliminarán versiones." -ForegroundColor Green
+    exit 0
+}
+
+$oldVersions = $coreApps | Where-Object { $_.Version -lt $targetVersion } | Select-Object -ExpandProperty VersionString -Unique
+
+if ($oldVersions.Count -eq 0) {
+    Write-Host "`n✅ No hay versiones antiguas para eliminar." -ForegroundColor Green
+} else {
+    Write-Host "`n🗑️  Se eliminarán las siguientes versiones:" -ForegroundColor Red
+    $oldVersions | ForEach-Object { Write-Host "  v$_" }
+
+    Write-Host "`n¿Continuar con la desinstalación? (s/n)" -ForegroundColor Magenta
+    $confirm = Read-Host
+    if ($confirm -notmatch 's|y') {
+        Write-Host "❌ Operación cancelada." -ForegroundColor Yellow
+        exit 0
+    }
+
+    foreach ($ver in $oldVersions) {
+        Write-Host "`n🔎 Buscando paquetes MSI para v$ver..." -ForegroundColor Cyan
+        $packages = Find-DotNetMSIPackages -Version $ver
+
+        if ($packages.Count -eq 0) {
+            Write-Host "   ❌ No se encontró ningún paquete MSI para v$ver" -ForegroundColor Yellow
+            continue
+        }
+
+        foreach ($pkg in $packages) {
+            Write-Host "   🚀 Desinstalando: $($pkg.DisplayName)"
+            $success = Uninstall-PackageByCode -PackageCode $pkg.PackageCode
+            if ($success) {
+                Write-Host "   ✅ Desinstalado correctamente." -ForegroundColor Green
+            } else {
+                Write-Error "   ❌ Error al desinstalar $($pkg.DisplayName)"
+            }
+        }
+
+        # Eliminar carpetas huérfanas
+        $orphanPath = "C:\Program Files\dotnet\shared\Microsoft.NETCore.App\$ver"
+        if (Test-Path $orphanPath) {
+            Remove-Item -Path $orphanPath -Recurse -Force
+            Write-Host "   🗑️  Carpeta eliminada: $orphanPath" -ForegroundColor DarkGray
+        }
+    }
+
+    Write-Host "`n✅ Desinstalación de versiones antiguas completada." -ForegroundColor Green
+}
+
+# --- Resumen final ---
+Write-Host "`n🎉 Resumen final:" -ForegroundColor Green
+if ($dotnet9Installed) {
+    Write-Host "✅ .NET 9 instalado correctamente."
+} else {
+    Write-Host "ℹ️  .NET 9 no fue instalado. Considera actualizar manualmente."
+}
+Write-Host "✅ Versiones antiguas eliminadas (si se confirmó)." -ForegroundColor Green
+Write-Host "💡 Recuerda reiniciar los servicios o el servidor si es necesario." -ForegroundColor Yellow
+Write-Host "🔗 Más info: https://dotnet.microsoft.com/en-us/download/dotnet/9.0" -ForegroundColor Blue
