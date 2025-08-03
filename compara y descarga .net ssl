@@ -1,0 +1,54 @@
+
+function Compare-Version ($current, $safeList) {
+    foreach ($v in $safeList) {
+        if ($current -eq $v) { return $true }
+    }
+    return $false
+}
+
+Write-Host "🔍 Detectando .NET Framework..."
+Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse |
+    Get-ItemProperty -Name Version -EA SilentlyContinue |
+    Where-Object { $_.Version -match '^\d' } |
+    ForEach-Object {
+        $v = $_.Version
+        $isSafe = Compare-Version $v @("4.8.1")
+        Write-Host ".NET Framework $v - ${if ($isSafe) {'✅ Seguro'} else {'❌ Vulnerable'}}"
+    }
+
+Write-Host "`n🔍 Detectando .NET Core SDKs y Runtimes..."
+$dotnetList = & "$env:ProgramFiles\dotnet\dotnet.exe" --list-sdks
+$dotnetList += & "$env:ProgramFiles\dotnet\dotnet.exe" --list-runtimes
+$dotnetList | ForEach-Object {
+    $v = ($_ -split " ")[0]
+    $isSafe = Compare-Version $v @("8.0.9", "7.0.19", "6.0.31", "8.0.301", "7.0.400", "6.0.420")
+    Write-Host "$_ - ${if ($isSafe) {'✅ Seguro'} else {'❌ Vulnerable'}}"
+}
+
+Write-Host "`n🔍 Visual C++ Redistributables:"
+Get-WmiObject -Class Win32_Product |
+    Where-Object { $_.Name -like "*Visual C++*" } |
+    ForEach-Object {
+        $v = $_.Version
+        $isSafe = Compare-Version $v @("14.38.33135", "14.39.33519")
+        Write-Host "$($_.Name) $v - ${if ($isSafe) {'✅ Seguro'} else {'❌ Vulnerable'}}"
+    }
+
+Write-Host "`n🔍 Buscando OpenSSL..."
+$paths = @(
+    "$env:ProgramFiles\OpenSSL", 
+    "$env:ProgramFiles\OpenSSL-Win64",
+    "$env:ProgramFiles (x86)\OpenSSL",
+    "$env:ProgramFiles (x86)\OpenSSL-Win32"
+)
+foreach ($path in $paths) {
+    $exe = "$path\bin\openssl.exe"
+    if (Test-Path $exe) {
+        $versionOutput = & $exe version
+        if ($versionOutput -match "\d+\.\d+\.\d+") {
+            $v = ($Matches[0])
+            $isSafe = Compare-Version $v @("3.0.15", "1.1.1w")
+            Write-Host "OpenSSL $v en $path - ${if ($isSafe) {'✅ Seguro'} else {'❌ Vulnerable'}}"
+        }
+    }
+}
