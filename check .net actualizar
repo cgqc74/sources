@@ -1,6 +1,6 @@
 <#
-    Script PowerShell: Detecta y actualiza automáticamente .NET Framework 4.8.1 y .NET SDK 8
-    - Detecta la versión instalada de .NET Framework (4.8.1) y .NET SDK 8.
+    Script PowerShell: Detecta y actualiza automáticamente .NET Framework 4.8.1 y .NET SDK 9
+    - Detecta la versión instalada de .NET Framework (4.8.1) y .NET SDK 9.
     - Descarga e instala automáticamente los instaladores oficiales de Microsoft si no están presentes.
     - Requiere ejecutar como Administrador y conexión a Internet.
 #>
