@@ -1,0 +1,26 @@
+# Ejecutar como Administrador
+$latest = [version]"7.5.2"
+$installerUrl = "https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
+
+Write-Host "📋 Versión actual de PowerShell:"
+$instVer = $PSVersionTable.PSVersion
+Write-Host "`t$instVer"
+
+if ($instVer -ge $latest) {
+    Write-Host "✅ Ya tienes la última versión estable instalada (v$latest)."
+    return
+}
+
+Write-Host "⬇️ Descargando PowerShell v$latest..."
+$msiPath = "$env:TEMP\PowerShell-$($latest).msi"
+try {
+    Invoke-WebRequest -Uri $installerUrl -OutFile $msiPath -UseBasicParsing -ErrorAction Stop
+    Write-Host "🛠 Instalando PowerShell v$latest..."
+    Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /quiet /norestart" -Wait
+    Remove-Item $msiPath -Force
+    Write-Host "✅ PowerShell v$latest instalado correctamente."
+    Write-Host "▶️ Para verificar, ejecuta:";
+    Write-Host "`t& 'C:\Program Files\PowerShell\7\pwsh.exe' -Command '$PSVersionTable'"
+} catch {
+    Write-Error "❌ No se pudo actualizar PowerShell: $($_.Exception.Message)"
+}
