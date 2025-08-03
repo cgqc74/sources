@@ -20,4 +20,18 @@ foreach ($key in $uninstallKeys) {
 
         # Si es MSIEXEC
         if ($uninstallCmd -like "msiexec*") {
-            Start-Process "msiexec.exe" -ArgumentLi
+            Start-Process "msiexec.exe" -ArgumentList "/x", "$($_.PSChildName)", "/quiet", "/norestart" -Wait
+        }
+        # Si es un EXE directo
+        else {
+            Start-Process -FilePath $uninstallCmd -ArgumentList "/quiet", "/norestart" -Wait
+        }
+
+        Write-Host "✅ Desinstalación finalizada para $($_.DisplayName)"
+    }
+}
+
+if (-not $found) {
+    Write-Warning "⚠️ No se encontró la versión 5.0.416 de .NET instalada en el sistema."
+}
+
