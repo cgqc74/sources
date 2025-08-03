@@ -45,22 +45,22 @@ function Get-DotNetSdk8Installed {
 }
 
 function Install-DotNetSdk8 {
-    $sdkUrl = "https://aka.ms/dotnet/8.0/dotnet-sdk-8.0.400-win-x64.exe"
-    $sdkFile = "$env:TEMP\dotnet-sdk-8.0.400-win-x64.exe"
-    Write-Host "`nDescargando .NET SDK 8.0.400..."
+    $sdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/9.0.303/dotnet-sdk-9.0.303-win-x64.exe"
+    $sdkFile = "$env:TEMP\dotnet-sdk-9.0.303-win-x64.exe"
+    Write-Host "`nDescargando .NET SDK 9.0.303..."
     try {
         Invoke-WebRequest -Uri $sdkUrl -OutFile $sdkFile -UseBasicParsing
     } catch {
-        Write-Host "Error al descargar el instalador de .NET SDK 8: $_" -ForegroundColor Red
+        Write-Host "Error al descargar el instalador de .NET SDK 9: $_" -ForegroundColor Red
         return
     }
     if (Test-Path $sdkFile) {
-        Write-Host "Instalando .NET SDK 8 en modo silencioso..."
+        Write-Host "Instalando .NET SDK 9 en modo silencioso..."
         Start-Process -FilePath $sdkFile -ArgumentList "/install", "/quiet", "/norestart" -Wait
         Remove-Item $sdkFile -Force
-        Write-Host ".NET SDK 8 instalado correctamente." -ForegroundColor Green
+        Write-Host ".NET SDK 9 instalado correctamente." -ForegroundColor Green
     } else {
-        Write-Host "No se encontró el instalador descargado de .NET SDK 8." -ForegroundColor Red
+        Write-Host "No se encontró el instalador descargado de .NET SDK 9." -ForegroundColor Red
     }
 }
 
@@ -73,9 +73,9 @@ if ($fwRelease -ge 533325) {
     Install-DotNetFramework481
 }
 
-Write-Host "`n[2/2] Comprobando .NET SDK 8..."
+Write-Host "`n[2/2] Comprobando .NET SDK 9..."
 if (Get-DotNetSdk8Installed) {
-    Write-Host ".NET SDK 8 ya está instalado." -ForegroundColor Green
+    Write-Host ".NET SDK 9 ya está instalado." -ForegroundColor Green
 } else {
     Install-DotNetSdk8
 }
