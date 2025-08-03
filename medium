@@ -1,0 +1,127 @@
+# ======================================================
+# Security Hardening Script for Known CVEs (2022–2024)
+# Focus: CVE-2024-4741, CVE-2024-6119, CVE-2022-23302, etc.
+# WARNING: Future CVEs (2025) are not real — ignore them.
+# ======================================================
+
+# Run as Administrator
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Warning "This script must be run as Administrator."
+    exit 1
+}
+
+Write-Host "🔍 Checking system for security updates and hardening..." -ForegroundColor Green
+
+# ------------------------------------------------------
+# 1. Check for Pending Reboots
+# ------------------------------------------------------
+Write-Host "`n🔄 Checking for pending reboots..." -ForegroundColor Yellow
+$rebootKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
+)
+$rebootPending = $rebootKeys | ForEach-Object { if (Test-Path $_) { $true } }
+if ($rebootPending) {
+    Write-Warning "⚠️ Reboot is pending. Please restart the system to apply updates."
+} else {
+    Write-Host "✅ No pending reboots detected." -ForegroundColor Green
+}
+
+# ------------------------------------------------------
+# 2. Install Latest Updates (via Windows Update)
+# ------------------------------------------------------
+Write-Host "`n📥 Installing latest Windows updates..." -ForegroundColor Yellow
+try {
+    $session = New-Object -ComObject Microsoft.Update.Session
+    $searcher = $session.CreateUpdateSearcher()
+    $historyCount = $searcher.GetTotalHistoryCount()
+    $updates = $searcher.Search("IsInstalled=0 and Type='Software'").Updates
+
+    if ($updates.Count -eq 0) {
+        Write-Host "✅ All updates are already installed." -ForegroundColor Green
+    } else {
+        Write-Host "📦 Found $($updates.Count) update(s) to install." -ForegroundColor Cyan
+        $downloader = $session.CreateUpdateDownloader()
+        $downloader.Updates = $updates
+        $downloader.Download()
+
+        $installer = $session.CreateUpdateInstaller()
+        $installer.Updates = $updates
+        $result = $installer.Install()
+
+        if ($result.ResultCode -eq 2) {
+            Write-Host "✅ Updates installed successfully." -ForegroundColor Green
+            if ($result.RebootRequired) {
+                Write-Warning "🔁 Reboot required to complete installation."
+            }
+        } else {
+            Write-Error "Failed to install updates."
+        }
+    }
+} catch {
+    Write-Warning "Failed to install updates: $($_.Exception.Message)"
+    Write-Host "💡 Consider using Windows Update GUI or 'usosvc' if script fails."
+}
+
+# ------------------------------------------------------
+# 3. Enable Attack Surface Reduction Rules (ASR)
+# Helps mitigate exploit-based attacks (e.g., RCE in MSMQ, ICMP)
+# ------------------------------------------------------
+Write-Host "`n🛡️ Enabling ASR Rules..." -ForegroundColor Yellow
+
+$asrRules = @{
+    # Block executable content from email client and webmail
+    "75668c1f-73c9-4cf5-92aa-5869361e5d98" = "Block executable content from email client and webmail"
+    # Block Office applications from creating child processes
+    "d4f940ab-401b-4efc-aadc-ad5f3c50688a" = "Block Office applications from creating child processes"
+    # Block Win32 API calls from Office macro
+    "92e97fa1-2edf-4476-bdd6-9dd0b4dddc7b" = "Block Win32 API calls from Office macro"
+}
+
+foreach ($guid in $asrRules.Keys) {
+    $ruleName = $asrRules[$guid]
+    $current = Get-MpPreference -ErrorAction SilentlyContinue | Select-Object -ExpandProperty AttackSurfaceReductionRules_Ids -ErrorAction SilentlyContinue
+    if ($current -contains $guid) {
+        Write-Host "✅ ASR: '$ruleName' already enabled." -ForegroundColor Green
+    } else {
+        Write-Host "🔧 Enabling ASR: $ruleName"
+        Add-MpPreference -AttackSurfaceReductionRules_Ids $guid -AttackSurfaceReductionRules_Actions Enabled
+    }
+}
+
+# ------------------------------------------------------
+# 4. Check for MSMQ Service (CVE-2024-6119)
+# ------------------------------------------------------
+Write-Host "`n🧩 Checking MSMQ service (CVE-2024-6119)..." -ForegroundColor Yellow
+$msmq = Get-WindowsFeature -Name MSMQ-Server -ErrorAction SilentlyContinue
+if ($msmq -and $msmq.Installed) {
+    Write-Warning "⚠️ MSMQ is installed. If not needed, uninstall it to mitigate CVE-2024-6119."
+    Write-Host "💡 Run: Uninstall-WindowsFeature MSMQ-Server"
+} else {
+    Write-Host "✅ MSMQ is not installed." -ForegroundColor Green
+}
+
+# ------------------------------------------------------
+# 5. Log4j Warning (CVE-2022-23302)
+# ------------------------------------------------------
+Write-Host "`n☕ Checking for Java applications (Log4j)..." -ForegroundColor Yellow
+$javaPaths = @("C:\Program Files\Java", "C:\Program Files (x86)\Java")
+foreach ($path in $javaPaths) {
+    if (Test-Path $path) {
+        Write-Host "📁 Java installation found: $path"
+        Write-Warning "⚠️ Ensure all Java applications use Log4j 2.17.1+ to fix CVE-2022-23302"
+    }
+}
+
+# ------------------------------------------------------
+# 6. Final Recommendation
+# ------------------------------------------------------
+Write-Host "`n✅ Recommendations:" -ForegroundColor Green
+Write-Host "   • Reboot if pending"
+Write-Host "   • Monitor Windows Update regularly"
+Write-Host "   • Disable unused services (e.g., MSMQ, SMBv1)"
+Write-Host "   • Use MDE/Defender for Endpoint for ASR"
+Write-Host "   • Ignore 'CVE-2025-...' — they are not real." -ForegroundColor Red
+
+Write-Host "`n🔒 System check complete." -ForegroundColor Green
