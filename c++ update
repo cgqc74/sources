@@ -52,4 +52,36 @@ function Install-VCRuntime {
 }
 
 # --- Main Execution ---
-Write-Host "`n🔍 Checking installed Visual C++ 2019/
+Write-Host "`n🔍 Checking installed Visual C++ 2019/2022 Redistributable..." -ForegroundColor Cyan
+$installed = Get-VC2019Version
+
+if ($installed) {
+    $installed | Select-Object DisplayName, DisplayVersion | Format-Table -AutoSize
+} else {
+    Write-Host "❌ No VC++ 2019+ found." -ForegroundColor Yellow
+}
+
+# --- Latest VC++ 2019-2022 Redistributable URL ---
+$vcUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe"  # x64 version
+$vcUrl_x86 = "https://aka.ms/vs/17/release/vc_redist.x86.exe"  # x86 (32-bit) if needed
+$tempFile = "$env:TEMP\vc_redist.x64.exe"
+
+# --- Ask user to update ---
+Write-Host "`n💡 The latest VC++ 2019-2022 runtime ensures compatibility and security." -ForegroundColor Green
+Write-Host "🔗 Official: https://support.microsoft.com/en-us/topic/the-latest-supported-visual-c-downloads-2647da03-1eea-4433-9aff-95f26a218cc0"
+Write-Host "`nInstall or update VC++ 2019-2022 Redistributable? (y/n)" -ForegroundColor Cyan
+$apply = Read-Host
+
+if ($apply -match '^(y|yes|s|si)$') {
+    Install-VCRuntime -Url $vcUrl -Path $tempFile
+
+    # Optional: Install x86 version on 64-bit systems (many apps still need it)
+    Write-Host "`nInstall x86 (32-bit) version too? (Recommended) (y/n)" -ForegroundColor Cyan
+    $installX86 = Read-Host
+    if ($installX86 -match '^(y|yes|s|si)$') {
+        Install-VCRuntime -Url $vcUrl_x86 -Path "$env:TEMP\vc_redist.x86.exe"
+    }
+}
+
+Write-Host "`n✅ VC++ update process completed." -ForegroundColor Green
+Write-Host "➡️  No restart required unless prompted by apps." -ForegroundColor Yellow
