@@ -1,0 +1,55 @@
+# Update-VC2019.ps1
+# Installs or updates Microsoft Visual C++ 2019 Redistributable (x64 & x86)
+# Covers: VC++ 2015, 2017, 2019, and 2022 (same redistributable)
+# Author: Qwen
+# Source: https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
+
+# --- Run as Administrator ---
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "⚠️  This script requires Administrator privileges." -ForegroundColor Red
+    Write-Host "Open PowerShell as Administrator and try again."
+    Start-Sleep -Seconds 5
+    exit 1
+}
+
+# --- Function: Check if VC++ 2019+ is installed ---
+function Get-VC2019Version {
+    $uninstallKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    $vcEntries = Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue | Where-Object {
+        $_.DisplayName -like "Microsoft Visual C++ 2019*" -or
+        $_.DisplayName -like "Microsoft Visual C++ 2015*" -or
+        $_.DisplayName -like "Microsoft Visual C++ 2022*" -or
+        ($_.DisplayName -like "Microsoft Visual C++ *" -and $_.DisplayVersion -ge "14.30.0")
+    }
+    return $vcEntries
+}
+
+# --- Function: Download and Install VC++ Redist ---
+function Install-VCRuntime {
+    param([string]$Url, [string]$Path)
+    try {
+        Write-Host "⬇️  Downloading VC++ Redistributable..." -ForegroundColor Green
+        Invoke-WebRequest -Uri $Url -OutFile $Path -ErrorAction Stop
+        Write-Host "✅ Downloaded: $Path"
+
+        Write-Host "🚀 Installing... (silent mode)" -ForegroundColor Cyan
+        $proc = Start-Process -FilePath $Path -ArgumentList "/install", "/quiet", "/norestart" -Wait -PassThru
+
+        if ($proc.ExitCode -in @(0, 3010)) {
+            Write-Host "✔️  Successfully installed VC++ Runtime" -ForegroundColor Green
+        } else {
+            Write-Error "❌ Installation failed. Exit code: $($proc.ExitCode)"
+        }
+    } catch {
+        Write-Error "❌ Error: $($_.Exception.Message)"
+    } finally {
+        if (Test-Path $Path) { Remove-Item $Path -Force }
+    }
+}
+
+# --- Main Execution ---
+Write-Host "`n🔍 Checking installed Visual C++ 2019/
