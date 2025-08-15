@@ -1,0 +1,150 @@
+# Install-WindowsUpdates-MultiServer.ps1
+# Installs Windows Updates on multiple remote servers
+# Author: Qwen
+# Requirements: PowerShell Remoting (WinRM), Admin rights
+
+# --- List of target servers ---
+$servers = @(
+    "SRV-WEB01",
+    "SRV-DB01",
+    "SRV-APP01"
+    # Add more servers as needed
+)
+
+# --- Log file ---
+$logFile = "$env:TEMP\WindowsUpdate-$(Get-Date -Format 'yyyyMMdd').log"
+$results = @()
+
+# --- Function: Write to log ---
+function Write-Log {
+    param([string]$Message)
+    $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "[$time] $Message" | Out-File -FilePath $logFile -Append -Encoding UTF8
+    Write-Host $Message
+}
+
+# --- Function: Install updates on a single server ---
+function Invoke-UpdateServer {
+    param([string]$ComputerName)
+
+    $result = [PSCustomObject]@{
+        ComputerName = $ComputerName
+        Status       = "Unknown"
+        Message      = ""
+        RebootNeeded = $false
+    }
+
+    Write-Log "🔍 Connecting to $ComputerName..."
+
+    try {
+        # Create remote session
+        $session = New-PSSession -ComputerName $ComputerName -ErrorAction Stop
+        Write-Log "✅ Connected to $ComputerName"
+
+        # Script block to run on remote server
+        $scriptBlock = {
+            # Load Windows Update COM object
+            $session = New-Object -ComObject Microsoft.Update.Session
+            $searcher = $session.CreateUpdateSearcher()
+
+            try {
+                $result = $searcher.Search("IsInstalled=0 and Type='Software'")
+            } catch {
+                throw "Failed to search for updates: $($_.Exception.Message)"
+            }
+
+            if ($result.Updates.Count -eq 0) {
+                return @{
+                    Updated = $false
+                    Message = "No updates available"
+                    RebootNeeded = $false
+                }
+            }
+
+            Write-Host "📦 Found $($result.Updates.Count) update(s). Starting download..."
+
+            # Add updates to collection
+            $updatesToDownload = New-Object -ComObject Microsoft.Update.UpdateColl
+            for ($i = 0; $i -lt $result.Updates.Count; $i++) {
+                $updatesToDownload.Add($result.Updates.Item($i)) | Out-Null
+            }
+
+            # Download updates
+            $downloader = $session.CreateUpdateDownloader()
+            $downloader.Updates = $updatesToDownload
+            try {
+                $downloadResult = $downloader.Download()
+                if ($downloadResult.ResultCode -ne 2) {
+                    throw "Download failed with code: $($downloadResult.ResultCode)"
+                }
+            } catch {
+                throw "Download failed: $($_.Exception.Message)"
+            }
+
+            # Install updates
+            $installer = $session.CreateUpdateInstaller()
+            $installer.Updates = $updatesToDownload
+            try {
+                $installResult = $installer.Install()
+                if ($installResult.ResultCode -eq 2) {
+                    return @{
+                        Updated = $true
+                        Message = "Updates installed successfully"
+                        RebootNeeded = $installResult.RebootRequired
+                    }
+                } else {
+                    throw "Installation failed with code: $($installResult.ResultCode)"
+                }
+            } catch {
+                throw "Installation failed: $($_.Exception.Message)"
+            }
+        }
+
+        # Execute on remote server
+        $remoteResult = Invoke-Command -Session $session -ScriptBlock $scriptBlock -ErrorAction Stop
+
+        $result.Status = "Success"
+        $result.Message = $remoteResult.Message
+        $result.RebootNeeded = $remoteResult.RebootNeeded
+
+        if ($remoteResult.Updated) {
+            Write-Log "✅ Updates installed on $ComputerName"
+        } else {
+            Write-Log "ℹ️  No updates on $ComputerName"
+        }
+
+        Remove-PSSession $session
+
+    } catch {
+        $result.Status = "Failed"
+        $result.Message = $_.Exception.Message
+        Write-Log "❌ Error on $ComputerName: $($result.Message)"
+    }
+
+    return $result
+}
+
+# --- Main Execution ---
+Write-Log "🚀 Starting Windows Update process on $(@($servers).Count) servers..."
+
+foreach ($server in $servers) {
+    $serverResult = Invoke-UpdateServer -ComputerName $server
+    $results += $serverResult
+}
+
+# --- Final Report ---
+Write-Log "`n📊 Summary:"
+$results | Format-Table -AutoSize | Out-String | Write-Host
+$results | Export-Csv -Path "$env:TEMP\WindowsUpdate-Report.csv" -NoTypeInformation -Encoding UTF8
+
+Write-Log "📄 Report saved to: $env:TEMP\WindowsUpdate-Report.csv"
+
+# Reboot Summary
+$rebootNeeded = $results | Where-Object { $_.RebootNeeded -eq $true }
+if ($rebootNeeded) {
+    Write-Log "`n⚠️  Reboot required for servers:"
+    $rebootNeeded.ComputerName | ForEach-Object { Write-Log "   🔄 $_" }
+    Write-Host "`n💡 Tip: Use 'Restart-Computer -ComputerName SERVER_NAME -Force' to reboot remotely."
+}
+
+Write-Log "✅ Process completed."
