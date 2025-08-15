@@ -1,0 +1,70 @@
+# Install-WindowsUpdates.ps1
+# Script to check, download, and install all available Windows updates
+# Requires Administrator privileges
+# Author: Qwen
+
+# --- Run as Administrator ---
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "⚠️  This script must be run as Administrator." -ForegroundColor Red
+    Start-Sleep -Seconds 5
+    exit 1
+}
+
+Write-Host "`n🔍 Checking for available Windows updates..." -ForegroundColor Cyan
+
+# --- Create Windows Update Session ---
+$session = New-Object -ComObject Microsoft.Update.Session
+$session.ClientApplicationID = "PowerShell Windows Update Script"
+
+$searcher = $session.CreateUpdateSearcher()
+try {
+    $result = $searcher.Search("IsInstalled=0 and Type='Software'")
+} catch {
+    Write-Error "Failed to search for updates: $($_.Exception.Message)"
+    Write-Host "💡 Make sure Windows Update service is running."
+    exit 1
+}
+
+if ($result.Updates.Count -eq 0) {
+    Write-Host "`n✅ No updates are available. Your system is up to date!" -ForegroundColor Green
+    Start-Sleep -Seconds 3
+    exit 0
+}
+
+Write-Host "`n📦 Found $($result.Updates.Count) update(s):" -ForegroundColor Yellow
+for ($i = 0; $i -lt $result.Updates.Count; $i++) {
+    $update = $result.Updates.Item($i)
+    Write-Host "  [$($i+1)] $($update.Title)"
+}
+
+# --- Download Updates ---
+Write-Host "`n⬇️  Starting download..." -ForegroundColor Cyan
+$updatesToDownload = New-Object -ComObject Microsoft.Update.UpdateColl
+for ($i = 0; $i -lt $result.Updates.Count; $i++) {
+    $updatesToDownload.Add($result.Updates.Item($i)) | Out-Null
+}
+
+$downloader = $session.CreateUpdateDownloader()
+$downloader.Updates = $updatesToDownload
+try {
+    $downloadResult = $downloader.Download()
+    if ($downloadResult.ResultCode -ne 2) {
+        Write-Error "Download failed with code: $($downloadResult.ResultCode)"
+        exit 1
+    }
+    Write-Host "✅ Download completed successfully." -ForegroundColor Green
+} catch {
+    Write-Error "Download failed: $($_.Exception.Message)"
+    exit 1
+}
+
+# --- Install Updates ---
+Write-Host "`n🚀 Installing updates..." -ForegroundColor Cyan
+$installer = $session.CreateUpdateInstaller()
+$installer.Updates = $updatesToDownload
+try {
+    $installResult = $installer.Install()
+
+    if ($installResult.ResultCode -eq 2) {
+        Write-Host "✅ Updates installed successfully!" -ForegroundColor
