@@ -67,4 +67,28 @@ try {
     $installResult = $installer.Install()
 
     if ($installResult.ResultCode -eq 2) {
-        Write-Host "✅ Updates installed successfully!" -ForegroundColor
+        Write-Host "✅ Updates installed successfully!" -ForegroundColor Green
+    } else {
+        Write-Warning "Installation completed with code: $($installResult.ResultCode)"
+    }
+
+    # Check if reboot is required
+    if ($installResult.RebootRequired) {
+        Write-Host "`n💡 A restart is required to complete the update process." -ForegroundColor Yellow
+        $restart = Read-Host "Do you want to restart now? (Y/N)"
+        if ($restart -match '^(y|yes|s|si)$') {
+            Write-Host "🔄 Restarting computer in 10 seconds..." -ForegroundColor Cyan
+            Start-Sleep -Seconds 10
+            Restart-Computer -Force
+        } else {
+            Write-Host "➡️  Please restart your computer manually later." -ForegroundColor White
+        }
+    } else {
+        Write-Host "`n✅ No restart is required. System is up to date!" -ForegroundColor Green
+    }
+
+} catch {
+    Write-Error "Installation failed: $($_.Exception.Message)"
+}
+
+Write-Host "`n🎉 Windows updates process completed." -ForegroundColor Green
