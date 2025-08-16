@@ -1,0 +1,42 @@
+# PowerShell Script: Update Apache Log4j on Windows Server 2022
+
+# Define paths
+$log4jDownloadUrl = "https://downloads.apache.org/logging/log4j/2.20.0/apache-log4j-2.20.0-bin.zip"
+$tempPath = "$env:TEMP\Log4jUpdate"
+$appPaths = @(
+    "C:\MyApp\libs",
+    "D:\OtherApp\lib"
+)
+
+# Create temp folder
+if (-not (Test-Path $tempPath)) { New-Item -ItemType Directory -Path $tempPath -Force }
+
+# Download latest Log4j
+Write-Host "Downloading latest Log4j..."
+Invoke-WebRequest -Uri $log4jDownloadUrl -OutFile "$tempPath\log4j.zip"
+
+# Extract ZIP
+Write-Host "Extracting Log4j..."
+Expand-Archive -Path "$tempPath\log4j.zip" -DestinationPath $tempPath -Force
+
+# Find new Log4j jar files
+$newJars = Get-ChildItem -Path "$tempPath\apache-log4j-2.20.0-bin" -Recurse -Include "log4j-*.jar"
+
+# Replace old Log4j jars in applications
+foreach ($appPath in $appPaths) {
+    Write-Host "Updating Log4j in $appPath..."
+    foreach ($jar in $newJars) {
+        $target = Join-Path $appPath $jar.Name
+        if (Test-Path $target) {
+            Write-Host "Removing old $($jar.Name)..."
+            Remove-Item -Path $target -Force
+        }
+        Write-Host "Copying new $($jar.Name)..."
+        Copy-Item -Path $jar.FullName -Destination $appPath
+    }
+}
+
+# Cleanup temp files
+Remove-Item -Path $tempPath -Recurse -Force
+
+Write-Host "Log4j update completed. Please restart any Java applications to load the new libraries." -ForegroundColor Green
