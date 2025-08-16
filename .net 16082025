@@ -6,11 +6,11 @@ $tempPath = "$env:TEMP\KBDownloads"
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $reportFile = Join-Path $logPath "Mitigacion_CVEs_$timestamp.csv"
 
-# Crear carpetas
+# Crear carpetas si no existen
 if (-not (Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force }
 if (-not (Test-Path $tempPath)) { New-Item -ItemType Directory -Path $tempPath -Force }
 
-# Lista de CVEs y sus KBs asociados
+# Lista de CVEs y KBs asociados
 $CVE_KB = @{
     "CVE-2024-21386" = "KB5035855"
     "CVE-2021-43877" = "KB5008223"
@@ -99,12 +99,16 @@ foreach ($cve in $CVE_KB.Keys) {
     else {
         $filePath = Descargar-KB -kb $kb
         if ($filePath -ne $null) {
-            if (Instalar-KB -filePath $filePath) {
+            # Intentar instalar
+            $installed = Instalar-KB -filePath $filePath
+            if ($installed) {
                 $mitigated = if (Verificar-KB -kb $kb) { "Sí" } else { "No" }
+            } else {
+                $mitigated = "No"
             }
-            else { $mitigated = "No" }
+        } else {
+            $mitigated = "No"
         }
-        else { $mitigated = "No" }
     }
 
     $report += [PSCustomObject]@{
@@ -115,7 +119,7 @@ foreach ($cve in $CVE_KB.Keys) {
     }
 }
 
-# Exportar reporte
+# Exportar reporte a CSV
 $report | Export-Csv -Path $reportFile -NoTypeInformation -Encoding UTF8
 Write-Host "`n=== Proceso finalizado ==="
 Write-Host "Reporte generado en: $reportFile" -ForegroundColor Magenta
