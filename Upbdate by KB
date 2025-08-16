@@ -1,0 +1,23 @@
+# Instalar módulo (si no está instalado)
+Install-Module PSWindowsUpdate -Force
+
+# Importar módulo
+Import-Module PSWindowsUpdate
+
+# Lista de KBs
+$KBs = @("KB5035855","KB5007206","KB5008223","KB5005575","KB5007206","KB5007206","KB4598230","KB5019966","KB5018419","KB5016627","KB5018421","KB5014678","KB5014678","KB5011487","KB5011497","KB5009555","KB5007206","KB5007206","KB5007206","KB5004238","KB5007206","KB5009555")
+
+# Instalar KBs
+foreach ($kb in $KBs) {
+    Write-Host "Instalando $kb..."
+    Install-WindowsUpdate -KBArticleID $kb -AcceptAll -IgnoreReboot
+}
+
+# Verificar
+foreach ($kb in $KBs) {
+    if (Get-WindowsUpdate -KBArticleID $kb -IsInstalled) {
+        Write-Host "$kb instalado correctamente."
+    } else {
+        Write-Host "$kb NO se instaló."
+    }
+}
