@@ -1,5 +1,5 @@
-# MitigarCVE_DescargaAutomatica.ps1
-# Script automatizado: descarga e instala KBs automáticamente y genera reporte
+# MitigarCVE_Automatico_Optimizdo.ps1
+# Script automatizado: descarga, instala KBs y genera reporte en Windows Server 2022
 
 $logPath = "C:\Logs\Mitigaciones"
 $tempPath = "$env:TEMP\KBDownloads"
@@ -10,7 +10,7 @@ $reportFile = Join-Path $logPath "Mitigacion_CVEs_$timestamp.csv"
 if (-not (Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force }
 if (-not (Test-Path $tempPath)) { New-Item -ItemType Directory -Path $tempPath -Force }
 
-# Lista de CVEs y KBs
+# Lista de CVEs y sus KBs asociados
 $CVE_KB = @{
     "CVE-2024-21386" = "KB5035855"
     "CVE-2021-43877" = "KB5008223"
@@ -39,41 +39,43 @@ $CVE_KB = @{
 # Función para descargar MSU automáticamente
 function Descargar-KB {
     param([string]$kb)
-
-    # URL de búsqueda del KB
     $searchUrl = "https://www.catalog.update.microsoft.com/Search.aspx?q=$kb"
 
-    # Obtener HTML de la página
-    $html = Invoke-WebRequest -Uri $searchUrl -UseBasicParsing
+    try {
+        $html = Invoke-WebRequest -Uri $searchUrl -UseBasicParsing
+        $linkPattern = 'href="(/Download.+?\.msu)"'
+        $matches = [regex]::Matches($html.Content, $linkPattern)
 
-    # Extraer enlace de descarga directo del primer resultado
-    $linkPattern = 'href="(/Download.+?\.cab|\.msu)"'
-    $matches = [regex]::Matches($html.Content, $linkPattern)
-    if ($matches.Count -eq 0) {
-        Write-Host "No se encontró enlace directo para $kb" -ForegroundColor Red
+        if ($matches.Count -eq 0) {
+            Write-Host "No se encontró enlace directo para $kb" -ForegroundColor Red
+            return $null
+        }
+
+        $downloadUrl = "https://www.catalog.update.microsoft.com$($matches[0].Groups[1].Value)"
+        $filePath = Join-Path $tempPath "$kb.msu"
+
+        Write-Host "Descargando $kb desde $downloadUrl..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath
+        return $filePath
+    }
+    catch {
+        Write-Host "Error descargando $kb: $_" -ForegroundColor Red
         return $null
     }
-
-    # Construir URL completa
-    $downloadUrl = "https://www.catalog.update.microsoft.com$($matches[0].Groups[1].Value)"
-
-    # Ruta local
-    $fileName = "$kb.msu"
-    $filePath = Join-Path $tempPath $fileName
-
-    # Descargar
-    Write-Host "Descargando $kb desde $downloadUrl..." -ForegroundColor Yellow
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath
-
-    return $filePath
 }
 
 # Función para instalar KB
 function Instalar-KB {
     param([string]$filePath)
     if (Test-Path $filePath) {
-        Start-Process "wusa.exe" -ArgumentList "$filePath /quiet /norestart" -Wait
-        return $true
+        try {
+            Start-Process "wusa.exe" -ArgumentList "$filePath /quiet /norestart" -Wait
+            return $true
+        }
+        catch {
+            Write-Host "Error instalando $filePath: $_" -ForegroundColor Red
+            return $false
+        }
     } else { return $false }
 }
 
@@ -93,13 +95,16 @@ foreach ($cve in $CVE_KB.Keys) {
     if (Verificar-KB -kb $kb) {
         Write-Host "$kb ya está instalado." -ForegroundColor Green
         $mitigated = "Sí"
-    } else {
+    }
+    else {
         $filePath = Descargar-KB -kb $kb
-        if ($filePath -ne $null -and Instalar-KB -filePath $filePath) {
-            $mitigated = if (Verificar-KB -kb $kb) { "Sí" } else { "No" }
-        } else {
-            $mitigated = "No"
+        if ($filePath -ne $null) {
+            if (Instalar-KB -filePath $filePath) {
+                $mitigated = if (Verificar-KB -kb $kb) { "Sí" } else { "No" }
+            }
+            else { $mitigated = "No" }
         }
+        else { $mitigated = "No" }
     }
 
     $report += [PSCustomObject]@{
