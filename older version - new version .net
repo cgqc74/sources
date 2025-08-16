@@ -1,0 +1,66 @@
+# PowerShell Script: Update .NET Framework and .NET SDK
+
+# Paths
+$tempPath = "$env:TEMP\DotNetInstall"
+if (-not (Test-Path $tempPath)) { New-Item -ItemType Directory -Path $tempPath -Force }
+
+# URLs for latest .NET SDK / Runtime (adjust to newest version if available)
+$dotnetSdkUrl = "https://download.visualstudio.microsoft.com/download/pr/3f3b2d1e-8b8d-4e3b-9b8d-4e3b9b8d4e3b/dotnet-sdk-8.0.7-win-x64.exe"
+$dotnetFrameworkUrl = "https://download.microsoft.com/download/3/9/1/391e9e8e-8b8d-4e3b-9b8d-4e3b9b8d4e3b/dotnet-framework-4.8.1-installer.exe"
+
+# Function to uninstall older .NET Framework versions
+function Uninstall-OldDotNetFramework {
+    Write-Host "Searching for older .NET Framework versions..."
+    $oldFrameworks = Get-WmiObject -Class Win32_Product | Where-Object {
+        $_.Name -match "Microsoft .NET Framework" -and $_.Version -lt "4.8.1"
+    }
+
+    foreach ($fw in $oldFrameworks) {
+        Write-Host "Uninstalling $($fw.Name) version $($fw.Version)..."
+        $fw.Uninstall() | Out-Null
+    }
+}
+
+# Function to uninstall older .NET SDKs
+function Uninstall-OldDotNetSDK {
+    Write-Host "Searching for older .NET SDK versions..."
+    $sdkList = & "dotnet" --list-sdks 2>$null
+    if ($sdkList) {
+        foreach ($sdk in $sdkList) {
+            $version = $sdk.Split()[0]
+            if ([version]$version -lt [version]"8.0.7") {
+                Write-Host "Older SDK detected: $version"
+                # Uninstall via Windows Installer if installed via MSI
+                $msi = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -match "Microsoft .NET SDK $version" }
+                if ($msi) { $msi.Uninstall() | Out-Null }
+            }
+        }
+    }
+}
+
+# Download latest installers
+Write-Host "Downloading latest .NET SDK..."
+Invoke-WebRequest -Uri $dotnetSdkUrl -OutFile "$tempPath\dotnet-sdk-latest.exe"
+
+Write-Host "Downloading latest .NET Framework..."
+Invoke-WebRequest -Uri $dotnetFrameworkUrl -OutFile "$tempPath\dotnet-framework-latest.exe"
+
+# Uninstall old versions
+Uninstall-OldDotNetFramework
+Uninstall-OldDotNetSDK
+
+# Install new versions silently
+Write-Host "Installing .NET SDK..."
+Start-Process -FilePath "$tempPath\dotnet-sdk-latest.exe" -ArgumentList "/quiet /norestart" -Wait
+
+Write-Host "Installing .NET Framework..."
+Start-Process -FilePath "$tempPath\dotnet-framework-latest.exe" -ArgumentList "/quiet /norestart" -Wait
+
+# Verify installation
+Write-Host "`nInstalled .NET SDKs:"
+& dotnet --list-sdks
+
+Write-Host "`nInstalled .NET Runtimes:"
+& dotnet --list-runtimes
+
+Write-Host "`nUpdate completed. A server restart may be required."
