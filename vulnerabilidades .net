@@ -66,9 +66,9 @@ function Get-DotNetDownloadUrl {
     $arch = "x64"
     $majorMinor = "$($Version.Major).$($Version.Minor)"
     switch ($majorMinor) {
-        "6.0" { return "https://versionsof.net/core/6.0/dotnet-runtime-6.0.$($Version.Build)-win-$arch.exe" }
-        "7.0" { return "https://versionsof.net/core/7.0/dotnet-runtime-7.0.$($Version.Build)-win-$arch.exe" }
-        "8.0" { return "https://versionsof.net/core/8.0/dotnet-runtime-8.0.$($Version.Build)-win-$arch.exe" }
+        "6.0" { return "https://versionsof.net/core/6.0/dotnet-runtime-6.0.36-win-$arch.exe" }
+        "7.0" { return "https://versionsof.net/core/7.0/dotnet-runtime-7.0.20-win-$arch.exe" }
+        "8.0" { return "https://versionsof.net/core/8.0/dotnet-runtime-8.0.19-win-$arch.exe" }
         default { return $null }
     }
 }
