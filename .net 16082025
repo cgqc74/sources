@@ -59,7 +59,7 @@ function Descargar-KB {
         return $filePath
     }
     catch {
-        Write-Host "Error descargando $kb: $_" -ForegroundColor Red
+        Write-Host "Error descargando $kb $_" -ForegroundColor Red
         return $null
     }
 }
@@ -73,7 +73,7 @@ function Instalar-KB {
             return $true
         }
         catch {
-            Write-Host "Error instalando $filePath: $_" -ForegroundColor Red
+            Write-Host "Error instalando $filePath $_" -ForegroundColor Red
             return $false
         }
     } else { return $false }
