@@ -1,0 +1,22 @@
+# Fix-Office-Vulnerabilities.ps1
+# Grupo: Office & COM Exploits
+
+$officePaths = @(
+    "HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\COM Compatibility\*"
+)
+
+$blocked = @(
+    "0002CE02-5842-11CE-ADE5-00AA0044773D"  # Equation Editor
+)
+
+foreach ($path in $officePaths) {
+    $keys = Get-ItemProperty $path -ErrorAction SilentlyContinue
+    foreach ($key in $keys) {
+        if ($blocked -contains $key.PSChildName) {
+            Write-Host "⚠️  Componente peligroso habilitado: $($key.PSChildName)" -ForegroundColor Red
+            Write-Host "💡 Deshabilita con: `Set-ItemProperty -Path '$path' -Name 'Compatibility Flags' -Value 0x400`"
+        }
+    }
+}
+
+Write-Host "✅ Recomendación: Deshabilitar Equation Editor y habilitar Macro Security." -ForegroundColor Green
