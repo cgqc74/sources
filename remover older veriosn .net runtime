@@ -1,0 +1,122 @@
+# Uninstall-Old-DotNet.ps1
+# Safely removes outdated .NET SDKs, Runtimes, and ASP.NET versions
+# Does NOT touch .NET Framework (4.8.1 is OS-integrated)
+# Author: Qwen
+
+# --- Run as Administrator ---
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "⚠️  This script must be run as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+# --- Minimum versions to keep ---
+$minVersions = @{
+    "Microsoft .NET SDK"          = "8.0.7"
+    "Microsoft ASP.NET Core"      = "8.0.7"
+    "Microsoft .NET Runtime"      = "8.0.7"
+    "Microsoft Windows Desktop Runtime" = "8.0.7"
+}
+
+# --- Log file ---
+$logFile = "$env:TEMP\Uninstall-DotNet-$(Get-Date -Format 'yyyyMMdd').log"
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "[$time][$Level] $Message" | Out-File -FilePath $logFile -Append -Encoding UTF8
+    switch ($Level) {
+        "ERROR" { Write-Host "❌ $Message" -ForegroundColor Red }
+        "WARN"  { Write-Host "⚠️  $Message" -ForegroundColor Yellow }
+        "INFO"  { Write-Host "🔍 $Message" }
+        "GOOD"  { Write-Host "✅ $Message" -ForegroundColor Green }
+    }
+}
+
+Write-Log "Starting .NET cleanup process..."
+
+# --- Helper: Compare versions ---
+function Is-OlderVersion {
+    param([string]$Installed, [string]$Minimum)
+    try {
+        return ([version]$Installed) -lt ([version]$Minimum)
+    } catch {
+        Write-Log "Invalid version format: $Installed" "WARN"
+        return $false
+    }
+}
+
+# --- Step 1: Use PackageManagement to list and uninstall MSI-based .NET products ---
+Write-Log "Scanning installed packages via PackageManagement..."
+Get-Package -ProviderName Programs -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -match "Microsoft .NET (SDK|Runtime|ASP.NET Core|Windows Desktop Runtime)"
+} | ForEach-Object {
+    $name = $_.Name
+    $version = $_.Version
+
+    foreach ($key in $minVersions.Keys) {
+        if ($name -like "*$key*") {
+            $minVer = $minVersions[$key]
+            if (Is-OlderVersion $version $minVer) {
+                Write-Log "Uninstalling '$name' v$version (older than $minVer)"
+                try {
+                    $_ | Uninstall-Package -Force -ErrorAction Stop
+                    Write-Log "Successfully uninstalled $name" "GOOD"
+                } catch {
+                    Write-Log "Failed to uninstall $name`: $($_.Exception.Message)" "ERROR"
+                }
+            } else {
+                Write-Log "Keeping $name v$version" "INFO"
+            }
+        }
+    }
+}
+
+# --- Step 2: Handle .NET Framework (DO NOT UNINSTALL) ---
+Write-Log "Checking .NET Framework (cannot be uninstalled)" "INFO"
+$netFxKey = "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
+if (Test-Path $netFxKey) {
+    $release = (Get-ItemProperty $netFxKey).Release
+    $version = switch ($release) {
+        { $_ -ge 533325 } { "4.8.1" }
+        { $_ -ge 528040 } { "4.8" }
+        default { "Unknown" }
+    }
+    Write-Log ".NET Framework installed: v$version (Release: $release)" "GOOD"
+} else {
+    Write-Log ".NET Framework registry key not found" "ERROR"
+}
+
+# --- Step 3: Optional: Manual cleanup via registry (advanced) ---
+# Only if PackageManagement fails
+<#
+$uninstallPaths = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+)
+
+Get-ChildItem $uninstallPaths -ErrorAction SilentlyContinue | ForEach-Object {
+    $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+    $name = $props.DisplayName
+    $version = $props.DisplayVersion
+    $uninstall = $props.UninstallString
+
+    foreach ($key in $minVersions.Keys) {
+        if ($name -and $name -match $key -and (Is-OlderVersion $version $minVersions[$key])) {
+            Write-Log "Found outdated: $name v$version"
+            # Parse uninstall string safely
+            if ($uninstall -match '^MsiExec\.exe') {
+                $guid = ($uninstall -split '{|}')[-2]
+                Write-Log "Uninstalling via MSI: $guid"
+                Start-Process "msiexec" -ArgumentList "/x $guid /quiet /norestart" -Wait -NoNewWindow
+            } elseif ($uninstall) {
+                $cmd = $uninstall.Split(' ')[0]
+                $args = $uninstall.Substring($cmd.Length).Trim()
+                Start-Process -FilePath $cmd -ArgumentList "$args /quiet /norestart" -Wait
+            }
+        }
+    }
+}
+#>
+
+Write-Log "Cleanup completed. Check $logFile for details." "GOOD"
+Write-Host "`n💡 Note: Some .NET components require a restart to fully remove." -ForegroundColor Yellow
