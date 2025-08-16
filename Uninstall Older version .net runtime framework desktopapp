@@ -1,0 +1,78 @@
+# PowerShell Script: Uninstall Older .NET Versions
+
+# Minimum versions to keep (adjust as needed)
+$minVersions = @{
+    "Microsoft .NET SDK"          = "8.0.7"
+    "Microsoft ASP.NET Core"      = "8.0.7"
+    "Microsoft .NET Core"         = "8.0.7"
+    "Microsoft WindowsDesktop.App"= "8.0.7"
+    "Microsoft .NET Framework"    = "4.8.1"
+}
+
+# Function to compare versions
+function Is-OlderVersion($installed, $minimum) {
+    try {
+        return [version]$installed -lt [version]$minimum
+    } catch {
+        return $false
+    }
+}
+
+# Function to uninstall older products via Win32_Product
+function Uninstall-OldProducts {
+    Write-Host "Scanning for installed products..."
+    $products = Get-WmiObject -Class Win32_Product | Where-Object {
+        $keep = $false
+        foreach ($key in $minVersions.Keys) {
+            if ($_.Name -match $key) { $keep = $true; break }
+        }
+        return $keep
+    }
+
+    foreach ($prod in $products) {
+        foreach ($key in $minVersions.Keys) {
+            if ($prod.Name -match $key) {
+                if (Is-OlderVersion $prod.Version $minVersions[$key]) {
+                    Write-Host "Uninstalling $($prod.Name) version $($prod.Version)..."
+                    try {
+                        $prod.Uninstall() | Out-Null
+                        Write-Host "Successfully uninstalled $($prod.Name)."
+                    } catch {
+                        Write-Warning "Failed to uninstall $($prod.Name): $_"
+                    }
+                }
+            }
+        }
+    }
+}
+
+# Function to uninstall older products via registry (for frameworks not listed in Win32_Product)
+function Uninstall-OldFromRegistry {
+    $uninstallPaths = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
+
+    foreach ($path in $uninstallPaths) {
+        $keys = Get-ChildItem $path -ErrorAction SilentlyContinue
+        foreach ($key in $keys) {
+            $name = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).DisplayName
+            $version = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).DisplayVersion
+            foreach ($prodKey in $minVersions.Keys) {
+                if ($name -and $name -match $prodKey -and Is-OlderVersion $version $minVersions[$prodKey]) {
+                    $uninstallString = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).UninstallString
+                    if ($uninstallString) {
+                        Write-Host "Uninstalling $name version $version..."
+                        Start-Process -FilePath "cmd.exe" -ArgumentList "/c $uninstallString /quiet /norestart" -Wait
+                    }
+                }
+            }
+        }
+    }
+}
+
+# Execute uninstall functions
+Uninstall-OldProducts
+Uninstall-OldFromRegistry
+
+Write-Host "Older .NET products cleanup completed."
