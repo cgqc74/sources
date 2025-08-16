@@ -1,54 +1,23 @@
-# PowerShell Script: Remove Older .NET Versions (Fixed for Windows Server 2022)
+# =========================================
+# Script: Cleanup Old .NET SDKs, Runtimes, and Frameworks
+# =========================================
 
-# Minimum versions to keep (adjust as needed)
-$minVersions = @{
-    "Microsoft .NET SDK"           = "8.0.7"
-    "Microsoft ASP.NET Core"       = "8.0.7"
-    "Microsoft .NET Core"          = "8.0.7"
-    "Microsoft WindowsDesktop.App" = "8.0.7"
-    "Microsoft .NET Framework"     = "4.8.1"
-}
+# -----------------------------
+# Configuración: versiones a mantener
+# -----------------------------
+$latestSDKVersion       = "8.0.7"    # SDK más reciente a mantener
+$latestRuntimeVersion   = "8.0.7"    # Runtime más reciente a mantener
+$minFrameworkVersion    = "4.8.1"    # Framework mínimo a mantener
 
-# Function to compare versions
-function Test-OlderVersion($installed, $minimum) {
-    if ([string]::IsNullOrEmpty($installed)) { return $false }
-    try {
-        return [version]$installed -lt [version]$minimum
-    } catch {
-        return $false
-    }
-}
+# -----------------------------
+# Función para desinstalar productos desde registro
+# -----------------------------
+function Uninstall-Product {
+    param (
+        [string]$NamePattern,
+        [string]$MinVersion
+    )
 
-# Function to remove older products via Win32_Product
-function Remove-OldProduct {
-    Write-Host "Scanning for installed products..."
-    $products = Get-WmiObject -Class Win32_Product | Where-Object {
-        $keep = $false
-        foreach ($key in $minVersions.Keys) {
-            if ($_.Name -match $key) { $keep = $true; break }
-        }
-        return $keep
-    }
-
-    foreach ($prod in $products) {
-        foreach ($key in $minVersions.Keys) {
-            if ($prod.Name -match $key) {
-                if (Test-OlderVersion $prod.Version $minVersions[$key]) {
-                    Write-Host "Uninstalling $($prod.Name) version $($prod.Version)..."
-                    try {
-                        $prod.Uninstall() | Out-Null
-                        Write-Host "Successfully uninstalled $($prod.Name)."
-                    } catch {
-                        Write-Warning "Failed to uninstall $($prod.Name): $_"
-                    }
-                }
-            }
-        }
-    }
-}
-
-# Function to remove older products via registry
-function Remove-OldProductFromRegistry {
     $uninstallPaths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -58,16 +27,16 @@ function Remove-OldProductFromRegistry {
         $keys = Get-ChildItem $path -ErrorAction SilentlyContinue
         foreach ($key in $keys) {
             $props = Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue
-            $name = $props.DisplayName
-            $version = $props.DisplayVersion
-            foreach ($prodKey in $minVersions.Keys) {
-                if ($name -and ($name -match $prodKey) -and (Test-OlderVersion $version $minVersions[$prodKey])) {
-                    $uninstallString = $props.UninstallString
-                    if ($uninstallString) {
-                        Write-Host "Uninstalling $name version $version..."
-                        # Escapar comillas para rutas con espacios
-                        $args = "/c `"$uninstallString`" /quiet /norestart"
-                        Start-Process -FilePath "cmd.exe" -ArgumentList $args -Wait
+            if ($props.DisplayName -and $props.DisplayVersion -and $props.UninstallString) {
+                if ($props.DisplayName -match $NamePattern) {
+                    try {
+                        if ([version]$props.DisplayVersion -lt [version]$MinVersion) {
+                            Write-Host "Desinstalando $($props.DisplayName) versión $($props.DisplayVersion)..."
+                            Start-Process -FilePath "cmd.exe" -ArgumentList "/c $($props.UninstallString) /quiet /norestart" -Wait
+                            Write-Host "Desinstalación completada: $($props.DisplayName)"
+                        }
+                    } catch {
+                        Write-Warning "Error al procesar $($props.DisplayName): $_"
                     }
                 }
             }
@@ -75,8 +44,55 @@ function Remove-OldProductFromRegistry {
     }
 }
 
-# Execute remove functions
-Remove-OldProduct
-Remove-OldProductFromRegistry
+# -----------------------------
+# Función para desinstalar SDKs y Runtimes usando Win32_Product
+# -----------------------------
+function Uninstall-OldMSIProducts {
+    param (
+        [string]$NamePattern,
+        [string]$MinVersion
+    )
 
-Write-Host "Older .NET products cleanup completed."
+    $products = Get-WmiObject -Class Win32_Product | Where-Object {
+        $_.Name -match $NamePattern
+    }
+
+    foreach ($prod in $products) {
+        try {
+            if ([version]$prod.Version -lt [version]$MinVersion) {
+                Write-Host "Desinstalando $($prod.Name) versión $($prod.Version)..."
+                $prod.Uninstall() | Out-Null
+                Write-Host "Desinstalación completada: $($prod.Name)"
+            }
+        } catch {
+            Write-Warning "Error al desinstalar $($prod.Name): $_"
+        }
+    }
+}
+
+# -----------------------------
+# Ejecutar limpieza de SDKs
+# -----------------------------
+Write-Host "=== Limpiando SDKs obsoletos de .NET ==="
+Uninstall-Product -NamePattern "Microsoft .NET SDK" -MinVersion $latestSDKVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft .NET SDK" -MinVersion $latestSDKVersion
+
+# -----------------------------
+# Ejecutar limpieza de Runtimes (Core, ASP.NET Core, WindowsDesktop.App)
+# -----------------------------
+Write-Host "=== Limpiando Runtimes obsoletos de .NET ==="
+Uninstall-Product -NamePattern "Microsoft ASP.NET Core" -MinVersion $latestRuntimeVersion
+Uninstall-Product -NamePattern "Microsoft .NET Core" -MinVersion $latestRuntimeVersion
+Uninstall-Product -NamePattern "Microsoft WindowsDesktop.App" -MinVersion $latestRuntimeVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft ASP.NET Core" -MinVersion $latestRuntimeVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft .NET Core" -MinVersion $latestRuntimeVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft WindowsDesktop.App" -MinVersion $latestRuntimeVersion
+
+# -----------------------------
+# Ejecutar limpieza de .NET Framework obsoletos
+# -----------------------------
+Write-Host "=== Limpiando .NET Framework obsoletos ==="
+Uninstall-Product -NamePattern "Microsoft .NET Framework" -MinVersion $minFrameworkVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft .NET Framework" -MinVersion $minFrameworkVersion
+
+Write-Host "=== Proceso de limpieza completado ==="
