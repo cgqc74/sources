@@ -1,16 +1,17 @@
-# PowerShell Script: Uninstall Older .NET Versions
+# PowerShell Script: Remove Older .NET Versions (Fixed for Windows Server 2022)
 
 # Minimum versions to keep (adjust as needed)
 $minVersions = @{
-    "Microsoft .NET SDK"          = "8.0.7"
-    "Microsoft ASP.NET Core"      = "8.0.7"
-    "Microsoft .NET Core"         = "8.0.7"
-    "Microsoft WindowsDesktop.App"= "8.0.7"
-    "Microsoft .NET Framework"    = "4.8.1"
+    "Microsoft .NET SDK"           = "8.0.7"
+    "Microsoft ASP.NET Core"       = "8.0.7"
+    "Microsoft .NET Core"          = "8.0.7"
+    "Microsoft WindowsDesktop.App" = "8.0.7"
+    "Microsoft .NET Framework"     = "4.8.1"
 }
 
 # Function to compare versions
-function Is-OlderVersion($installed, $minimum) {
+function Test-OlderVersion($installed, $minimum) {
+    if ([string]::IsNullOrEmpty($installed)) { return $false }
     try {
         return [version]$installed -lt [version]$minimum
     } catch {
@@ -18,8 +19,8 @@ function Is-OlderVersion($installed, $minimum) {
     }
 }
 
-# Function to uninstall older products via Win32_Product
-function Uninstall-OldProducts {
+# Function to remove older products via Win32_Product
+function Remove-OldProduct {
     Write-Host "Scanning for installed products..."
     $products = Get-WmiObject -Class Win32_Product | Where-Object {
         $keep = $false
@@ -32,7 +33,7 @@ function Uninstall-OldProducts {
     foreach ($prod in $products) {
         foreach ($key in $minVersions.Keys) {
             if ($prod.Name -match $key) {
-                if (Is-OlderVersion $prod.Version $minVersions[$key]) {
+                if (Test-OlderVersion $prod.Version $minVersions[$key]) {
                     Write-Host "Uninstalling $($prod.Name) version $($prod.Version)..."
                     try {
                         $prod.Uninstall() | Out-Null
@@ -46,8 +47,8 @@ function Uninstall-OldProducts {
     }
 }
 
-# Function to uninstall older products via registry (for frameworks not listed in Win32_Product)
-function Uninstall-OldFromRegistry {
+# Function to remove older products via registry
+function Remove-OldProductFromRegistry {
     $uninstallPaths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -56,14 +57,17 @@ function Uninstall-OldFromRegistry {
     foreach ($path in $uninstallPaths) {
         $keys = Get-ChildItem $path -ErrorAction SilentlyContinue
         foreach ($key in $keys) {
-            $name = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).DisplayName
-            $version = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).DisplayVersion
+            $props = Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue
+            $name = $props.DisplayName
+            $version = $props.DisplayVersion
             foreach ($prodKey in $minVersions.Keys) {
-                if ($name -and $name -match $prodKey -and Is-OlderVersion $version $minVersions[$prodKey]) {
-                    $uninstallString = (Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue).UninstallString
+                if ($name -and ($name -match $prodKey) -and (Test-OlderVersion $version $minVersions[$prodKey])) {
+                    $uninstallString = $props.UninstallString
                     if ($uninstallString) {
                         Write-Host "Uninstalling $name version $version..."
-                        Start-Process -FilePath "cmd.exe" -ArgumentList "/c $uninstallString /quiet /norestart" -Wait
+                        # Escapar comillas para rutas con espacios
+                        $args = "/c `"$uninstallString`" /quiet /norestart"
+                        Start-Process -FilePath "cmd.exe" -ArgumentList $args -Wait
                     }
                 }
             }
@@ -71,8 +75,8 @@ function Uninstall-OldFromRegistry {
     }
 }
 
-# Execute uninstall functions
-Uninstall-OldProducts
-Uninstall-OldFromRegistry
+# Execute remove functions
+Remove-OldProduct
+Remove-OldProductFromRegistry
 
 Write-Host "Older .NET products cleanup completed."
