@@ -118,7 +118,7 @@ function Invoke-UpdateServer {
     } catch {
         $result.Status = "Failed"
         $result.Message = $_.Exception.Message
-        Write-Log "❌ Error on $ComputerName: $($result.Message)"
+        Write-Log "❌ Error on $ComputerName $($result.Message)"
     }
 
     return $result
