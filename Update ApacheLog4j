@@ -1,42 +1,48 @@
-# PowerShell Script: Update Apache Log4j on Windows Server 2022
+# PowerShell Script: Auto-update Apache Log4j on Windows Server 2022
 
-# Define paths
+# URL de la última versión de Log4j 2.x
 $log4jDownloadUrl = "https://downloads.apache.org/logging/log4j/2.25.1/apache-log4j-2.25.1-bin.zip"
+
+# Carpeta temporal para descarga y extracción
 $tempPath = "$env:TEMP\Log4jUpdate"
-$appPaths = @(
-    "C:\MyApp\libs",
-    "D:\OtherApp\lib"
-)
+$backupPath = "$env:TEMP\Log4jBackup"
 
-# Create temp folder
+# Crear carpetas temporales
 if (-not (Test-Path $tempPath)) { New-Item -ItemType Directory -Path $tempPath -Force }
+if (-not (Test-Path $backupPath)) { New-Item -ItemType Directory -Path $backupPath -Force }
 
-# Download latest Log4j
+# Descargar última versión de Log4j
 Write-Host "Downloading latest Log4j..."
 Invoke-WebRequest -Uri $log4jDownloadUrl -OutFile "$tempPath\log4j.zip"
 
-# Extract ZIP
+# Extraer ZIP
 Write-Host "Extracting Log4j..."
 Expand-Archive -Path "$tempPath\log4j.zip" -DestinationPath $tempPath -Force
 
-# Find new Log4j jar files
+# Obtener archivos .jar nuevos
 $newJars = Get-ChildItem -Path "$tempPath\apache-log4j-2.25.1-bin" -Recurse -Include "log4j-*.jar"
 
-# Replace old Log4j jars in applications
-foreach ($appPath in $appPaths) {
-    Write-Host "Updating Log4j in $appPath..."
-    foreach ($jar in $newJars) {
-        $target = Join-Path $appPath $jar.Name
-        if (Test-Path $target) {
-            Write-Host "Removing old $($jar.Name)..."
-            Remove-Item -Path $target -Force
-        }
-        Write-Host "Copying new $($jar.Name)..."
-        Copy-Item -Path $jar.FullName -Destination $appPath
+# Buscar todos los archivos log4j existentes en el servidor (puede tardar)
+Write-Host "Searching for existing Log4j jars on the server..."
+$existingJars = Get-ChildItem -Path "C:\" -Recurse -Include "log4j-*.jar" -ErrorAction SilentlyContinue
+
+foreach ($oldJar in $existingJars) {
+    # Crear backup del jar viejo
+    $relativePath = $oldJar.FullName.Substring(3) -replace "[:\\]", "_"
+    $backupFile = Join-Path $backupPath $relativePath
+    Copy-Item -Path $oldJar.FullName -Destination $backupFile -Force
+    Write-Host "Backed up $($oldJar.FullName) to $backupFile"
+
+    # Encontrar el jar correspondiente nuevo (por nombre)
+    $newJar = $newJars | Where-Object { $_.Name -eq $oldJar.Name }
+    if ($newJar) {
+        Copy-Item -Path $newJar.FullName -Destination $oldJar.DirectoryName -Force
+        Write-Host "Replaced $($oldJar.FullName) with latest version."
     }
 }
 
-# Cleanup temp files
+# Limpiar carpeta temporal
 Remove-Item -Path $tempPath -Recurse -Force
 
 Write-Host "Log4j update completed. Please restart any Java applications to load the new libraries." -ForegroundColor Green
+Write-Host "Backup of old jars saved in: $backupPath"
