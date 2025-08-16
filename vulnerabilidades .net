@@ -202,7 +202,7 @@ Write-Host "🔗 Disponible en: https://dotnet.microsoft.com/en-us/download/dotn
 
 $upgradeTo9 = Read-Host "`n¿Descargar e instalar .NET 9 Runtime? (s/n)"
 if ($upgradeTo9 -match '^(s|y|yes|si)$') {
-    $dotnet9Url = "https://download.visualstudio.microsoft.com/download/pr/8d1f97f3-50e8-4e95-952c-bbe5e63a8c35/9db1b2b7e6b7f6b3c8e1e8a8c8b7d1c6/dotnet-runtime-9.0.0-win-x64.exe"
+    $dotnet9Url = "https://download.visualstudio.microsoft.com/download/pr/99bd07c2-c95c-44dc-9d47-36d3b18df240/bdf26c62f69c1b783687c1dce83ccf7a/dotnet-runtime-9.0.0-win-x64.exe"
     $installer9 = "$env:TEMP\dotnet-runtime-9.0.0-win-x64.exe"
 
     Write-Log "Descargando .NET 9 Runtime..."
