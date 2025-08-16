@@ -1,14 +1,16 @@
-# Ruta de almacenamiento temporal y de logs
+# MitigarCVE_DescargaAutomatica.ps1
+# Script automatizado: descarga e instala KBs automáticamente y genera reporte
+
 $logPath = "C:\Logs\Mitigaciones"
 $tempPath = "$env:TEMP\KBDownloads"
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $reportFile = Join-Path $logPath "Mitigacion_CVEs_$timestamp.csv"
 
-# Crear directorios si no existen
+# Crear carpetas
 if (-not (Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force }
 if (-not (Test-Path $tempPath)) { New-Item -ItemType Directory -Path $tempPath -Force }
 
-# Lista de CVEs y sus KB asociados
+# Lista de CVEs y KBs
 $CVE_KB = @{
     "CVE-2024-21386" = "KB5035855"
     "CVE-2021-43877" = "KB5008223"
@@ -34,79 +36,81 @@ $CVE_KB = @{
     "CVE-2021-1721"  = "KB5007206"
 }
 
-# Función para descargar el archivo MSU desde el Microsoft Update Catalog
+# Función para descargar MSU automáticamente
 function Descargar-KB {
-    param (
-        [string]$kb
-    )
-    $url = "https://www.catalog.update.microsoft.com/Search.aspx?q=$kb"
-    Write-Host "Por favor, descarga manualmente el archivo $kb desde: $url" -ForegroundColor Yellow
+    param([string]$kb)
+
+    # URL de búsqueda del KB
+    $searchUrl = "https://www.catalog.update.microsoft.com/Search.aspx?q=$kb"
+
+    # Obtener HTML de la página
+    $html = Invoke-WebRequest -Uri $searchUrl -UseBasicParsing
+
+    # Extraer enlace de descarga directo del primer resultado
+    $linkPattern = 'href="(/Download.+?\.cab|\.msu)"'
+    $matches = [regex]::Matches($html.Content, $linkPattern)
+    if ($matches.Count -eq 0) {
+        Write-Host "No se encontró enlace directo para $kb" -ForegroundColor Red
+        return $null
+    }
+
+    # Construir URL completa
+    $downloadUrl = "https://www.catalog.update.microsoft.com$($matches[0].Groups[1].Value)"
+
+    # Ruta local
     $fileName = "$kb.msu"
     $filePath = Join-Path $tempPath $fileName
-    Write-Host "Guarda el archivo en: $filePath" -ForegroundColor Yellow
+
+    # Descargar
+    Write-Host "Descargando $kb desde $downloadUrl..." -ForegroundColor Yellow
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath
+
     return $filePath
 }
 
-# Función para instalar el KB
+# Función para instalar KB
 function Instalar-KB {
-    param (
-        [string]$filePath
-    )
+    param([string]$filePath)
     if (Test-Path $filePath) {
-        Write-Host "Instalando $filePath..." -ForegroundColor Green
         Start-Process "wusa.exe" -ArgumentList "$filePath /quiet /norestart" -Wait
         return $true
-    } else {
-        Write-Host "Archivo no encontrado: $filePath" -ForegroundColor Red
-        return $false
-    }
+    } else { return $false }
 }
 
-# Función para verificar si el KB está instalado
+# Función para verificar KB instalado
 function Verificar-KB {
-    param (
-        [string]$kb
-    )
-    $installed = Get-HotFix -Id $kb -ErrorAction SilentlyContinue
-    return $installed -ne $null
+    param([string]$kb)
+    return (Get-HotFix -Id $kb -ErrorAction SilentlyContinue) -ne $null
 }
 
-# Crear lista para reporte
 $report = @()
-
 Write-Host "=== Iniciando mitigación automatizada de CVEs ===" -ForegroundColor Cyan
 
 foreach ($cve in $CVE_KB.Keys) {
     $kb = $CVE_KB[$cve]
     Write-Host "`nVerificando $cve ($kb)..." -ForegroundColor Yellow
 
-    $kbInstalled = Verificar-KB -kb $kb
-    if ($kbInstalled) {
+    if (Verificar-KB -kb $kb) {
         Write-Host "$kb ya está instalado." -ForegroundColor Green
         $mitigated = "Sí"
     } else {
-        Write-Host "$kb no está instalado. Descargando..." -ForegroundColor Red
         $filePath = Descargar-KB -kb $kb
-        if (Instalar-KB -filePath $filePath) {
-            $kbInstalled = Verificar-KB -kb $kb
-            $mitigated = if ($kbInstalled) { "Sí" } else { "No" }
+        if ($filePath -ne $null -and Instalar-KB -filePath $filePath) {
+            $mitigated = if (Verificar-KB -kb $kb) { "Sí" } else { "No" }
         } else {
             $mitigated = "No"
         }
     }
 
-    # Registrar en reporte
     $report += [PSCustomObject]@{
-        CVE        = $cve
-        KB         = $kb
-        Instalado  = if ($kbInstalled) { "Sí" } else { "No" }
-        Mitigado   = $mitigated
+        CVE = $cve
+        KB = $kb
+        Instalado = if (Verificar-KB -kb $kb) { "Sí" } else { "No" }
+        Mitigado = $mitigated
     }
 }
 
-# Exportar reporte a CSV
+# Exportar reporte
 $report | Export-Csv -Path $reportFile -NoTypeInformation -Encoding UTF8
-
-Write-Host "`n=== Proceso finalizado ===" -ForegroundColor Cyan
+Write-Host "`n=== Proceso finalizado ==="
 Write-Host "Reporte generado en: $reportFile" -ForegroundColor Magenta
-Write-Host "Por favor, descarga manualmente los archivos MSU faltantes desde el Microsoft Update Catalog." -ForegroundColor Yellow
