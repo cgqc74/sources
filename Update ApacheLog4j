@@ -1,7 +1,7 @@
 # PowerShell Script: Update Apache Log4j on Windows Server 2022
 
 # Define paths
-$log4jDownloadUrl = "https://downloads.apache.org/logging/log4j/2.20.0/apache-log4j-2.20.0-bin.zip"
+$log4jDownloadUrl = "https://downloads.apache.org/logging/log4j/2.25.1/apache-log4j-2.25.1-bin.zip"
 $tempPath = "$env:TEMP\Log4jUpdate"
 $appPaths = @(
     "C:\MyApp\libs",
