@@ -1,0 +1,20 @@
+# Ruta de instalación de .NET SDK
+$dotnetSdkUrl = "https://download.visualstudio.microsoft.com/download/pr/3f3b2d1e-8b8d-4e3b-9b8d-4e3b9b8d4e3b/8b8d4e3b9b8d4e3b9b8d4e3b9b8d4e3b/dotnet-sdk-8.0.7-win-x64.exe"
+
+# Ruta de instalación de .NET Framework
+$dotnetFrameworkUrl = "https://download.microsoft.com/download/3/9/1/391e9e8e-8b8d-4e3b-9b8d-4e3b9b8d4e3b/dotnet-framework-4.8.1-installer.exe"
+
+# Descargar .NET SDK
+Invoke-WebRequest -Uri $dotnetSdkUrl -OutFile "C:\temp\dotnet-sdk-installer.exe"
+
+# Descargar .NET Framework
+Invoke-WebRequest -Uri $dotnetFrameworkUrl -OutFile "C:\temp\dotnet-framework-installer.exe"
+
+# Instalar .NET SDK
+Start-Process -FilePath "C:\temp\dotnet-sdk-installer.exe" -ArgumentList "/quiet /norestart" -Wait
+
+# Instalar .NET Framework
+Start-Process -FilePath "C:\temp\dotnet-framework-installer.exe" -ArgumentList "/quiet /norestart" -Wait
+
+# Reiniciar el servidor
+Restart-Computer -Force
