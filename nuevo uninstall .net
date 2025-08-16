@@ -1,0 +1,112 @@
+# Uninstall-Old-DotNet-With-Tool.ps1
+# Uses the official .NET Core Uninstall Tool to remove outdated .NET SDKs and Runtimes
+# Author: Qwen
+# Source: https://github.com/dotnet/cli-lab/tree/master/dotnet-core-uninstall
+
+# --- Run as Administrator ---
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "⚠️  This script must be run as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+# --- Log file ---
+$logFile = "$env:TEMP\DotNet-Uninstall-$(Get-Date -Format 'yyyyMMdd').log"
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "[$time][$Level] $Message" | Out-File -FilePath $logFile -Append -Encoding UTF8
+    switch ($Level) {
+        "ERROR" { Write-Host "❌ $Message" -ForegroundColor Red }
+        "WARN"  { Write-Host "⚠️  $Message" -ForegroundColor Yellow }
+        "INFO"  { Write-Host "🔍 $Message" }
+        "GOOD"  { Write-Host "✅ $Message" -ForegroundColor Green }
+    }
+}
+
+Write-Log "Starting .NET cleanup using official .NET Core Uninstall Tool..."
+
+# --- Step 1: Download .NET Core Uninstall Tool ---
+$toolUrl = "https://aka.ms/dotnet-core-uninstall-pkg"
+$toolExe = "$env:TEMP\dotnet-core-uninstall.exe"
+
+Write-Log "Downloading .NET Core Uninstall Tool..."
+try {
+    Invoke-WebRequest -Uri $toolUrl -OutFile $toolExe -ErrorAction Stop
+    Write-Log "Tool downloaded to $toolExe"
+} catch {
+    Write-Log "Failed to download tool: $($_.Exception.Message)" "ERROR"
+    exit 1
+}
+
+# --- Step 2: Check Tool Version ---
+try {
+    $version = (& $toolExe --version) | Select-Object -First 1
+    Write-Log "Tool version: $version"
+} catch {
+    Write-Log "Failed to run tool: $($_.Exception.Message)" "ERROR"
+    exit 1
+}
+
+# --- Step 3: Define minimum versions to keep ---
+$minVersions = @{
+    "sdk"    = "8.0.7"
+    "runtime" = "8.0.7"
+    "aspnet" = "8.0.7"
+}
+
+Write-Log "Minimum versions to keep:"
+$minVersions.GetEnumerator() | ForEach-Object { Write-Log "  $($_.Key): $($_.Value)" }
+
+# --- Step 4: List all installed .NET versions ---
+Write-Log "Listing installed .NET SDKs and Runtimes..."
+try {
+    $listOutput = & $toolExe list --sdk --runtime --aspnet-runtime --major-minor $minVersions.sdk
+    $listOutput | Out-String | Write-Host
+} catch {
+    Write-Log "Failed to list installed versions: $($_.Exception.Message)" "ERROR"
+}
+
+# --- Step 5: Uninstall outdated versions ---
+Write-Log "Planning removal of outdated versions..."
+
+# Function to uninstall by version
+function Uninstall-Version {
+    param([string]$Type, [string]$Version)
+    $args = @("remove", "--$Type", $Version, "--force")
+    Write-Log "Executing: dotnet-core-uninstall $($args -join ' ')"
+    try {
+        $result = & $toolExe @args 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "Successfully uninstalled $Type $Version" "GOOD"
+        } else {
+            Write-Log "Uninstall failed for $Type $Version`: $result" "ERROR"
+        }
+    } catch {
+        Write-Log "Exception during uninstall: $($_.Exception.Message)" "ERROR"
+    }
+}
+
+# Example: Remove SDKs below 8.0.7
+Uninstall-Version -Type "sdk" -Version "6.0.0"  # Replace with actual outdated version
+Uninstall-Version -Type "sdk" -Version "7.0.0"
+Uninstall-Version -Type "runtime" -Version "6.0.0"
+Uninstall-Version -Type "aspnet-runtime" -Version "6.0.0"
+
+# --- Optional: Remove all pre-8.0 versions ---
+Write-Host "`n💡 Would you like to remove ALL .NET versions before 8.0? This includes SDKs, Runtimes, and ASP.NET (y/n)" -ForegroundColor Cyan
+$removeAll = Read-Host
+if ($removeAll -match '^(y|yes|s|si)$') {
+    try {
+        & $toolExe remove --all-previews --all-lower-patches --sdk --runtime --aspnet-runtime --major-minor 6.0 --force
+        & $toolExe remove --all-previews --all-lower-patches --sdk --runtime --aspnet-runtime --major-minor 7.0 --force
+        Write-Log "Removed all .NET versions before 8.0" "GOOD"
+    } catch {
+        Write-Log "Bulk removal failed: $($_.Exception.Message)" "ERROR"
+    }
+}
+
+# --- Final Message ---
+Write-Log "Cleanup completed. You can now delete: $toolExe"
+Write-Host "`n🗑️  Tip: Delete the tool when done: Remove-Item '$toolExe'" -ForegroundColor Yellow
+Write-Host "✅ See log: $logFile" -ForegroundColor Green
