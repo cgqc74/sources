@@ -5,8 +5,8 @@ $tempPath = "$env:TEMP\DotNetInstall"
 if (-not (Test-Path $tempPath)) { New-Item -ItemType Directory -Path $tempPath -Force }
 
 # URLs for latest .NET SDK / Runtime (adjust to newest version if available)
-$dotnetSdkUrl = "https://download.visualstudio.microsoft.com/download/pr/3f3b2d1e-8b8d-4e3b-9b8d-4e3b9b8d4e3b/dotnet-sdk-8.0.7-win-x64.exe"
-$dotnetFrameworkUrl = "https://download.microsoft.com/download/3/9/1/391e9e8e-8b8d-4e3b-9b8d-4e3b9b8d4e3b/dotnet-framework-4.8.1-installer.exe"
+$dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/9.0.304/dotnet-sdk-9.0.304-win-x64.exe"
+$dotnetFrameworkUrl = "https://go.microsoft.com/fwlink/?linkid=2203305"
 
 # Function to uninstall older .NET Framework versions
 function Uninstall-OldDotNetFramework {
