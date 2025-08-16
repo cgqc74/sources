@@ -1,0 +1,116 @@
+# MitigarCVE_Automatico.ps1
+# Script automatizado para Windows Server 2022
+# Descarga, instala y verifica mitigación de CVEs sin reiniciar
+
+# Ruta de almacenamiento temporal y de logs
+$logPath = "C:\Logs\Mitigaciones"
+$tempPath = "$env:TEMP\KBDownloads"
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$reportFile = Join-Path $logPath "Mitigacion_CVEs_$timestamp.csv"
+
+# Crear directorios si no existen
+if (-not (Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force }
+if (-not (Test-Path $tempPath)) { New-Item -ItemType Directory -Path $tempPath -Force }
+
+# Lista de CVEs y sus KB asociados
+$CVE_KB = @{
+    "CVE-2024-21386" = "KB5035855"
+    "CVE-2021-43877" = "KB5008223"
+    "CVE-2021-34532" = "KB5005575"
+    "CVE-2021-1723"  = "KB5007206"
+    "CVE-2020-1597"  = "KB5007206"
+    "CVE-2020-1045"  = "KB4598230"
+    "CVE-2022-41089" = "KB5019966"
+    "CVE-2022-38013" = "KB5018419"
+    "CVE-2022-34716" = "KB5016627"
+    "CVE-2022-30184" = "KB5018421"
+    "CVE-2022-29145" = "KB5014678"
+    "CVE-2022-29117" = "KB5014678"
+    "CVE-2022-24512" = "KB5011487"
+    "CVE-2022-24464" = "KB5011497"
+    "CVE-2022-23267" = "KB5009555"
+    "CVE-2021-34485" = "KB5007206"
+    "CVE-2021-31204" = "KB5007206"
+    "CVE-2021-26701" = "KB5007206"
+    "CVE-2021-31957" = "KB5004238"
+    "CVE-2021-26423" = "KB5007206"
+    "CVE-2021-24112" = "KB5009555"
+    "CVE-2021-1721"  = "KB5007206"
+}
+
+# Función para descargar el archivo MSU desde el Microsoft Update Catalog
+function Descargar-KB {
+    param (
+        [string]$kb
+    )
+    $url = "https://www.catalog.update.microsoft.com/Search.aspx?q=$kb"
+    Write-Host "Por favor, descarga manualmente el archivo $kb desde: $url" -ForegroundColor Yellow
+    $fileName = "$kb.msu"
+    $filePath = Join-Path $tempPath $fileName
+    Write-Host "Guarda el archivo en: $filePath" -ForegroundColor Yellow
+    return $filePath
+}
+
+# Función para instalar el KB
+function Instalar-KB {
+    param (
+        [string]$filePath
+    )
+    if (Test-Path $filePath) {
+        Write-Host "Instalando $filePath..." -ForegroundColor Green
+        Start-Process "wusa.exe" -ArgumentList "$filePath /quiet /norestart" -Wait
+        return $true
+    } else {
+        Write-Host "Archivo no encontrado: $filePath" -ForegroundColor Red
+        return $false
+    }
+}
+
+# Función para verificar si el KB está instalado
+function Verificar-KB {
+    param (
+        [string]$kb
+    )
+    $installed = Get-HotFix -Id $kb -ErrorAction SilentlyContinue
+    return $installed -ne $null
+}
+
+# Crear lista para reporte
+$report = @()
+
+Write-Host "=== Iniciando mitigación automatizada de CVEs ===" -ForegroundColor Cyan
+
+foreach ($cve in $CVE_KB.Keys) {
+    $kb = $CVE_KB[$cve]
+    Write-Host "`nVerificando $cve ($kb)..." -ForegroundColor Yellow
+
+    $kbInstalled = Verificar-KB -kb $kb
+    if ($kbInstalled) {
+        Write-Host "$kb ya está instalado." -ForegroundColor Green
+        $mitigated = "Sí"
+    } else {
+        Write-Host "$kb no está instalado. Descargando..." -ForegroundColor Red
+        $filePath = Descargar-KB -kb $kb
+        if (Instalar-KB -filePath $filePath) {
+            $kbInstalled = Verificar-KB -kb $kb
+            $mitigated = if ($kbInstalled) { "Sí" } else { "No" }
+        } else {
+            $mitigated = "No"
+        }
+    }
+
+    # Registrar en reporte
+    $report += [PSCustomObject]@{
+        CVE        = $cve
+        KB         = $kb
+        Instalado  = if ($kbInstalled) { "Sí" } else { "No" }
+        Mitigado   = $mitigated
+    }
+}
+
+# Exportar reporte a CSV
+$report | Export-Csv -Path $reportFile -NoTypeInformation -Encoding UTF8
+
+Write-Host "`n=== Proceso finalizado ===" -ForegroundColor Cyan
+Write-Host "Reporte generado en: $reportFile" -ForegroundColor Magenta
+Write-Host "Por favor, descarga manualmente los archivos MSU faltantes desde el Microsoft Update Catalog." -ForegroundColor Yellow
