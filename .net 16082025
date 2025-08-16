@@ -1,7 +1,3 @@
-# MitigarCVE_Automatico.ps1
-# Script automatizado para Windows Server 2022
-# Descarga, instala y verifica mitigación de CVEs sin reiniciar
-
 # Ruta de almacenamiento temporal y de logs
 $logPath = "C:\Logs\Mitigaciones"
 $tempPath = "$env:TEMP\KBDownloads"
