@@ -1,0 +1,25 @@
+# Fix-VC-Runtime.ps1
+# Grupo: Visual C++ Vulnerabilities
+
+function Get-VCVersion {
+    $regPath = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+    if (Test-Path $regPath) {
+        $key = Get-Item $regPath
+        [PSCustomObject]@{
+            Version = "$($key.GetValue('Major')).$($key.GetValue('Minor')).$($key.GetValue('Bld'))"
+            SP = $key.GetValue('SP')
+        }
+    }
+}
+
+$vc = Get-VCVersion
+if ($vc) {
+    if ($vc.Version -lt "14.30.0") {
+        Write-Host "⚠️  VC++ desactualizado: $($vc.Version). Requiere parche." -ForegroundColor Yellow
+        Write-Host "🔗 Descarga: https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    } else {
+        Write-Host "✅ VC++ actualizado: $($vc.Version)" -ForegroundColor Green
+    }
+} else {
+    Write-Host "✅ VC++ no detectado (no requerido o no instalado)" -ForegroundColor Gray
+}
