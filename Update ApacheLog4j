@@ -20,7 +20,7 @@ Write-Host "Extracting Log4j..."
 Expand-Archive -Path "$tempPath\log4j.zip" -DestinationPath $tempPath -Force
 
 # Find new Log4j jar files
-$newJars = Get-ChildItem -Path "$tempPath\apache-log4j-2.20.0-bin" -Recurse -Include "log4j-*.jar"
+$newJars = Get-ChildItem -Path "$tempPath\apache-log4j-2.25.1-bin" -Recurse -Include "log4j-*.jar"
 
 # Replace old Log4j jars in applications
 foreach ($appPath in $appPaths) {
