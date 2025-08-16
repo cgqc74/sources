@@ -1,0 +1,132 @@
+# =========================================
+# Script: Cleanup & Update .NET SDK, Runtimes, and Frameworks
+# =========================================
+
+# -----------------------------
+# Configuración: versiones a mantener y URLs de descarga
+# -----------------------------
+$latestSDKVersion       = "8.0.7"    # SDK más reciente a mantener
+$latestRuntimeVersion   = "8.0.7"    # Runtime más reciente a mantener
+$minFrameworkVersion    = "4.8.1"    # Framework mínimo a mantener
+
+$downloadFolder = "$env:TEMP\DotNetInstallers"
+New-Item -ItemType Directory -Force -Path $downloadFolder | Out-Null
+
+# URLs de ejemplo: ajustar según la versión y arquitectura
+$dotnetSDKUrl = "https://download.visualstudio.microsoft.com/download/pr/12345678-abcd-1234-abcd-1234567890ab/dotnet-sdk-8.0.7-win-x64.exe"
+$dotnetRuntimeUrl = "https://download.visualstudio.microsoft.com/download/pr/87654321-abcd-4321-abcd-0987654321ba/dotnet-runtime-8.0.7-win-x64.exe"
+
+# -----------------------------
+# Función para desinstalar productos desde registro
+# -----------------------------
+function Uninstall-Product {
+    param (
+        [string]$NamePattern,
+        [string]$MinVersion
+    )
+
+    $uninstallPaths = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
+
+    foreach ($path in $uninstallPaths) {
+        $keys = Get-ChildItem $path -ErrorAction SilentlyContinue
+        foreach ($key in $keys) {
+            $props = Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue
+            if ($props.DisplayName -and $props.DisplayVersion -and $props.UninstallString) {
+                if ($props.DisplayName -match $NamePattern) {
+                    try {
+                        if ([version]$props.DisplayVersion -lt [version]$MinVersion) {
+                            Write-Host "Desinstalando $($props.DisplayName) versión $($props.DisplayVersion)..."
+                            Start-Process -FilePath "cmd.exe" -ArgumentList "/c $($props.UninstallString) /quiet /norestart" -Wait
+                            Write-Host "Desinstalación completada: $($props.DisplayName)"
+                        }
+                    } catch {
+                        Write-Warning "Error al procesar $($props.DisplayName): $_"
+                    }
+                }
+            }
+        }
+    }
+}
+
+# -----------------------------
+# Función para desinstalar SDKs/Runtimes desde Win32_Product
+# -----------------------------
+function Uninstall-OldMSIProducts {
+    param (
+        [string]$NamePattern,
+        [string]$MinVersion
+    )
+
+    $products = Get-WmiObject -Class Win32_Product | Where-Object {
+        $_.Name -match $NamePattern
+    }
+
+    foreach ($prod in $products) {
+        try {
+            if ([version]$prod.Version -lt [version]$MinVersion) {
+                Write-Host "Desinstalando $($prod.Name) versión $($prod.Version)..."
+                $prod.Uninstall() | Out-Null
+                Write-Host "Desinstalación completada: $($prod.Name)"
+            }
+        } catch {
+            Write-Warning "Error al desinstalar $($prod.Name): $_"
+        }
+    }
+}
+
+# -----------------------------
+# Función para descargar e instalar .NET
+# -----------------------------
+function Install-DotNet {
+    param (
+        [string]$Url,
+        [string]$FileName
+    )
+
+    $filePath = Join-Path $downloadFolder $FileName
+    Write-Host "Descargando $FileName..."
+    Invoke-WebRequest -Uri $Url -OutFile $filePath
+
+    Write-Host "Instalando $FileName..."
+    Start-Process -FilePath $filePath -ArgumentList "/quiet" -Wait
+
+    Remove-Item $filePath
+    Write-Host "Instalación completada: $FileName"
+}
+
+# -----------------------------
+# Ejecutar limpieza de SDKs
+# -----------------------------
+Write-Host "=== Limpiando SDKs obsoletos de .NET ==="
+Uninstall-Product -NamePattern "Microsoft .NET SDK" -MinVersion $latestSDKVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft .NET SDK" -MinVersion $latestSDKVersion
+
+# -----------------------------
+# Ejecutar limpieza de Runtimes
+# -----------------------------
+Write-Host "=== Limpiando Runtimes obsoletos de .NET ==="
+Uninstall-Product -NamePattern "Microsoft ASP.NET Core" -MinVersion $latestRuntimeVersion
+Uninstall-Product -NamePattern "Microsoft .NET Core" -MinVersion $latestRuntimeVersion
+Uninstall-Product -NamePattern "Microsoft WindowsDesktop.App" -MinVersion $latestRuntimeVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft ASP.NET Core" -MinVersion $latestRuntimeVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft .NET Core" -MinVersion $latestRuntimeVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft WindowsDesktop.App" -MinVersion $latestRuntimeVersion
+
+# -----------------------------
+# Ejecutar limpieza de .NET Framework
+# -----------------------------
+Write-Host "=== Limpiando .NET Framework obsoletos ==="
+Uninstall-Product -NamePattern "Microsoft .NET Framework" -MinVersion $minFrameworkVersion
+Uninstall-OldMSIProducts -NamePattern "Microsoft .NET Framework" -MinVersion $minFrameworkVersion
+
+# -----------------------------
+# Instalar SDK y Runtime más recientes
+# -----------------------------
+Write-Host "=== Instalando la versión más reciente de SDK y Runtime ==="
+Install-DotNet -Url $dotnetSDKUrl -FileName "dotnet-sdk-$latestSDKVersion-win-x64.exe"
+Install-DotNet -Url $dotnetRuntimeUrl -FileName "dotnet-runtime-$latestRuntimeVersion-win-x64.exe"
+
+Write-Host "=== Proceso de limpieza e instalación completado ==="
