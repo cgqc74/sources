@@ -99,6 +99,12 @@ function Get-DotNetDownloadUrl {
 
         "9.0 NET CORE" { return "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/9.0.8/aspnetcore-runtime-9.0.8-win-x64.exe" }
 
+        "SDK FRAMEWORK" { return "https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-9.0.304-windows-x64-installer" }
+
+        "NETFRAMEWORK 4.8.1" { return "https://dotnet.microsoft.com/en-us/download/dotnet-framework/thank-you/net481-offline-installer" }
+
+        "NETFRAMEWORK 4.8.1" { return "https://dotnet.microsoft.com/en-us/download/dotnet-framework/thank-you/net481-developer-pack-offline-installer" }
+
         default { return $null }
     }
 }
