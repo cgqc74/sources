@@ -1,0 +1,41 @@
+# Forzar actualización de VMware Tools (desde máquina virtual Windows)
+
+Write-Host "---- VMware Tools Upgrade ----"
+
+# 1) Ver versión actual instalada
+$current = (Get-WmiObject -Class Win32_Product | Where-Object {$_.Name -like "VMware Tools*"}).Version
+Write-Host "Versión actual instalada de VMware Tools: $current"
+
+# 2) Montar unidad del instalador (espera a que aparezca el CD-ROM con VMware Tools)
+Write-Host "Montando instalador VMware Tools..."
+$device = Get-WmiObject -Class Win32_CDROMDrive | Select-Object -First 1
+$letter = $device.Drive
+
+# Si no está montado, intentar montar manualmente (requiere que se haya lanzado 'Install/Upgrade VMware Tools' desde vCenter o ESXi)
+if (-not $letter) {
+    Write-Warning "No se detecta ISO montada. Abra vSphere/vCenter y elija: Guest OS > Install/Upgrade VMware Tools. Luego presione [Enter]."
+    Read-Host
+    $device = Get-WmiObject -Class Win32_CDROMDrive | Select-Object -First 1
+    $letter = $device.Drive
+}
+
+# Ruta al instalador msi
+$installer = "$letter\setup64.exe"
+
+if (Test-Path $installer) {
+    Write-Host "Ejecutando instalador de VMware Tools: $installer"
+    Start-Process -FilePath $installer `
+        -ArgumentList '/S /v"/qn REBOOT=R"' `
+        -Wait
+
+    Write-Host "Actualización completada."
+} 
+else {
+    Write-Warning "No se encontró el instalador setup64.exe. Verifique que la ISO esté montada correctamente."
+}
+
+Write-Host "Desmontando media..."
+# En la mayoría de los casos vSphere desmonta automáticamente, si no, pedir desmontar manualmente
+Write-Host "Si aún aparece la unidad del CD-ROM, desmonte la ISO desde vCenter."
+
+Write-Host "---- Done ----"
