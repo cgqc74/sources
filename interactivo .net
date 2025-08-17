@@ -1,0 +1,143 @@
+# =================================================================
+# Script: Mitigar-CVEs.ps1
+# Propósito: Mitigar CVEs específicos en Windows Server 2022
+# - CVEs Log4j: buscan y reemplazan archivos .jar vulnerables
+# - CVEs .NET: detectan e instalan KB o runtime actualizado
+# - Backup de Log4j en C:\Backup_Log4j\AAAA-MM-DD_HHMMSS
+# - Logs de ejecución
+# - Interactivo, solo menú, sin reinicio automático
+# =================================================================
+
+# Carpeta para backup de Log4j
+$timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
+$backupRoot = "C:\Backup_Log4j\$timestamp"
+$logPath = "C:\Backup_Log4j\logs"
+if (!(Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force | Out-Null }
+$logFile = "$logPath\MitigarCVEs_$timestamp.log"
+
+function Write-Log {
+    param([string]$message)
+    $msg = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $message"
+    Write-Host $msg
+    Add-Content -Path $logFile -Value $msg
+}
+
+function Backup-And-Replace-Jar {
+    param(
+        [string]$filePath,
+        [string]$safeJarUrl
+    )
+
+    try {
+        $relativePath = $filePath -replace "^[a-zA-Z]:\\", ""
+        $backupDir = Join-Path $backupRoot $(Split-Path $relativePath -Parent)
+        if (!(Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
+
+        $backupFile = Join-Path $backupDir (Split-Path $filePath -Leaf)
+        Copy-Item $filePath $backupFile -Force
+        Write-Log "Respaldado $filePath → $backupFile"
+
+        # Descargar jar seguro
+        $tempJar = "$env:TEMP\safe.jar"
+        Invoke-WebRequest -Uri $safeJarUrl -OutFile $tempJar -UseBasicParsing
+        Copy-Item $tempJar $filePath -Force
+        Remove-Item $tempJar
+        Write-Log "Reemplazado $filePath con versión segura."
+    }
+    catch {
+        Write-Log "ERROR reemplazando $filePath : $_"
+    }
+}
+
+function Update-DotNet-KB {
+    param(
+        [string]$kbUrl,
+        [string]$arch = "x64"
+    )
+    try {
+        $installer = "$env:TEMP\KBInstall_$arch.exe"
+        Invoke-WebRequest -Uri $kbUrl -OutFile $installer -UseBasicParsing
+        Write-Log "Descargado instalador KB desde $kbUrl"
+        Start-Process -FilePath $installer -ArgumentList "/quiet /norestart" -Wait
+        Write-Log "Instalación KB completada: $kbUrl"
+        Remove-Item $installer
+    }
+    catch {
+        Write-Log "ERROR instalando KB $kbUrl : $_"
+    }
+}
+
+# =================================================================
+# Funciones para cada CVE
+# =================================================================
+
+function CVE_2023_26464 {
+    Write-Log "Mitigando CVE-2023-26464 (Log4j 1.x)"
+    $jarFiles = Get-ChildItem -Path C:\ -Recurse -Include log4j-*.jar -ErrorAction SilentlyContinue
+    $safeJarUrl = "https://example.com/log4j-1.2.17-slim.jar"  # Reemplazar con URL oficial seguro
+    foreach ($jar in $jarFiles) { Backup-And-Replace-Jar $jar.FullName $safeJarUrl }
+}
+
+function CVE_2025_53773 {
+    Write-Log "Mitigando CVE-2025-53773 (.NET 8 Runtime)"
+    $kbUrl = "https://download.visualstudio.microsoft.com/path_to_kb_x64.exe"  # Reemplazar con URL oficial
+    Update-DotNet-KB $kbUrl "x64"
+}
+
+function CVE_2025_29803 {
+    Write-Log "Mitigando CVE-2025-29803 (.NET 8 Runtime)"
+    $kbUrl = "https://download.visualstudio.microsoft.com/path_to_kb_x64.exe"  # Reemplazar con URL oficial
+    Update-DotNet-KB $kbUrl "x64"
+}
+
+function CVE_2020_9493 {
+    Write-Log "Mitigando CVE-2020-9493 (Log4j 2.x)"
+    $jarFiles = Get-ChildItem -Path C:\ -Recurse -Include log4j-core-*.jar -ErrorAction SilentlyContinue
+    $safeJarUrl = "https://example.com/log4j-2.17.1.jar"  # Reemplazar con URL oficial seguro
+    foreach ($jar in $jarFiles) { Backup-And-Replace-Jar $jar.FullName $safeJarUrl }
+}
+
+function CVE_2022_23302 {
+    Write-Log "Mitigando CVE-2022-23302 (Log4j 1.x)"
+    $jarFiles = Get-ChildItem -Path C:\ -Recurse -Include log4j-*.jar -ErrorAction SilentlyContinue
+    $safeJarUrl = "https://example.com/log4j-1.2.17-slim.jar"  # Reemplazar con URL oficial seguro
+    foreach ($jar in $jarFiles) { Backup-And-Replace-Jar $jar.FullName $safeJarUrl }
+}
+
+function CVE_2022_23305 {
+    Write-Log "Mitigando CVE-2022-23305 (Log4j 1.x)"
+    $jarFiles = Get-ChildItem -Path C:\ -Recurse -Include log4j-*.jar -ErrorAction SilentlyContinue
+    $safeJarUrl = "https://example.com/log4j-1.2.17-slim.jar"  # Reemplazar con URL oficial seguro
+    foreach ($jar in $jarFiles) { Backup-And-Replace-Jar $jar.FullName $safeJarUrl }
+}
+
+# =================================================================
+# Menú interactivo
+# =================================================================
+
+do {
+    Write-Host ""
+    Write-Host "===== Mitigar CVEs en Windows Server 2022 ====="
+    Write-Host "1) CVE-2023-26464  (Log4j 1.x)"
+    Write-Host "2) CVE-2025-53773  (.NET 8 Runtime)"
+    Write-Host "3) CVE-2025-29803  (.NET 8 Runtime)"
+    Write-Host "4) CVE-2020-9493   (Log4j 2.x)"
+    Write-Host "5) CVE-2022-23302  (Log4j 1.x)"
+    Write-Host "6) CVE-2022-23305  (Log4j 1.x)"
+    Write-Host "0) Salir"
+    $choice = Read-Host "Selecciona un CVE para mitigar"
+
+    switch ($choice) {
+        "1" { CVE_2023_26464 }
+        "2" { CVE_2025_53773 }
+        "3" { CVE_2025_29803 }
+        "4" { CVE_2020_9493 }
+        "5" { CVE_2022_23302 }
+        "6" { CVE_2022_23305 }
+        "0" { Write-Host "Saliendo..."; break }
+        default { Write-Host "Opción inválida, intenta nuevamente." }
+    }
+} while ($true)
+
+Write-Log "Proceso completado. Revisar posibles reinicios necesarios para .NET si aplica."
+Write-Host "Logs disponibles en $logFile"
