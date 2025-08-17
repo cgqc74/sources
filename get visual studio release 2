@@ -1,30 +1,34 @@
 # =================================================================
-# Script: Get-VisualStudioInfo.ps1
-# Purpose: Displays the Visual Studio installations with version,
-#          release channel and edition (using vswhere.exe).
+# Script: Get-VisualStudioUsingRegistry.ps1
+# Propósito: Obtener versiones instaladas de Visual Studio leyendo el registro
 # =================================================================
 
-# Default path where vswhere.exe is installed by the Visual Studio Installer.
-$vswherePath = "$([Environment]::GetFolderPath('ProgramFiles(x86)'))\Microsoft Visual Studio\Installer\vswhere.exe"
+$vsRegistryPaths = @(
+    "HKLM:\SOFTWARE\Microsoft\VisualStudio\SxS\VS7",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\SxS\VS7"
+)
 
-if (-not (Test-Path $vswherePath)) {
-    Write-Host "vswhere.exe not found. Download it from https://aka.ms/vswhere" -ForegroundColor Yellow
-    return
+$results = @()
+
+foreach ($path in $vsRegistryPaths) {
+    if (Test-Path $path) {
+        # path -> contiene claves con nombre = Version, valor = ruta de instalación
+        $props = Get-ItemProperty -Path $path
+        foreach ($p in $props.PSObject.Properties) {
+            if ($p.Name -match "^\d+\.\d+") {   # detecta claves tipo 16.0, 17.0, etc.
+                $results += [PSCustomObject]@{
+                    VSVersion     = $p.Name
+                    InstallPath   = $p.Value
+                    Architecture  = if ($path -like "*WOW6432Node*") { "x86" } else { "x64" }
+                }
+            }
+        }
+    }
 }
 
-# Query all installations
-$installations = & $vswherePath -all -format json | ConvertFrom-Json
-
-if (-not $installations) {
-    Write-Host "No Visual Studio installations detected."
+if ($results.Count -eq 0) {
+    Write-Host "No se detectaron instalaciones de Visual Studio desde el registro."
 } else {
-    $installations | ForEach-Object {
-        [PSCustomObject]@{
-            Edition       = $_.installationName
-            Version       = $_.installationVersion
-            Channel       = $_.channelName
-            Release       = $_.productId
-            InstallPath   = $_.installationPath
-        }
-    } | Format-Table -AutoSize
+    Write-Host "Instalaciones de Visual Studio detectadas (vía registro):"
+    $results | Sort-Object VSVersion | Format-Table -AutoSize
 }
