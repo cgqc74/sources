@@ -1,0 +1,51 @@
+# =================================================================
+# Script: Fix-CVE-2023-26464-Log4j2.ps1
+# Propósito: Mitigar CVE-2023-26464 (Log4j 2.x) en Windows Server 2022
+# =================================================================
+
+# Configuración de backup y logs
+$timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
+$backupRoot = "C:\Backup_Log4j\$timestamp"
+$logPath = "C:\Backup_Log4j\logs"
+if (!(Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force | Out-Null }
+$logFile = "$logPath\MitigarCVE_2023-26464_$timestamp.log"
+
+function Write-Log {
+    param([string]$message)
+    $msg = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $message"
+    Write-Host $msg
+    Add-Content -Path $logFile -Value $msg
+}
+
+function Backup-And-Replace-Jar {
+    param(
+        [string]$filePath,
+        [string]$safeJarUrl
+    )
+
+    try {
+        $relativePath = $filePath -replace "^[a-zA-Z]:\\", ""
+        $backupDir = Join-Path $backupRoot $(Split-Path $relativePath -Parent)
+        if (!(Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
+
+        $backupFile = Join-Path $backupDir (Split-Path $filePath -Leaf)
+        Copy-Item $filePath $backupFile -Force
+        Write-Log "Respaldado $filePath → $backupFile"
+
+        # Descargar jar seguro
+        $tempJar = "$env:TEMP\log4j-2.25.1.jar"
+        Invoke-WebRequest -Uri $safeJarUrl -OutFile $tempJar -UseBasicParsing
+        Copy-Item $tempJar $filePath -Force
+        Remove-Item $tempJar
+        Write-Log "Reemplazado $filePath con versión segura 2.25.1."
+    }
+    catch {
+        Write-Log "ERROR reemplazando $filePath : $_"
+    }
+}
+
+# URL oficial del jar log4j-core 2.25.1 (binario)
+$safeJarUrl = "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.25.1/log4j-core-2.25.1.jar"
+
+# Buscar archivos Log4j 2.x
+Write-Log "Buscando archivos Log4j 2.x en C
