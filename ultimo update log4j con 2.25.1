@@ -1,6 +1,6 @@
 # =================================================================
-# Script: Fix-CVE-2023-26464-Log4j2.ps1
-# Propósito: Mitigar CVE-2023-26464 (Log4j 2.x) en Windows Server 2022
+# Script: Mitigar-Log4j-Upgrade.ps1
+# Propósito: Actualizar todos los Log4j 1.x y 2.x a Log4j 2.25.1
 # =================================================================
 
 # Configuración de backup y logs
@@ -8,7 +8,7 @@ $timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 $backupRoot = "C:\Backup_Log4j\$timestamp"
 $logPath = "C:\Backup_Log4j\logs"
 if (!(Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force | Out-Null }
-$logFile = "$logPath\MitigarCVE_2023-26464_$timestamp.log"
+$logFile = "$logPath\MitigarLog4j_$timestamp.log"
 
 function Write-Log {
     param([string]$message)
@@ -32,32 +32,36 @@ function Backup-And-Replace-Jar {
         Copy-Item $filePath $backupFile -Force
         Write-Log "Respaldado $filePath → $backupFile"
 
-        # Descargar jar seguro
+        # Descargar jar seguro (Log4j 2.25.1)
         $tempJar = "$env:TEMP\log4j-2.25.1.jar"
         Invoke-WebRequest -Uri $safeJarUrl -OutFile $tempJar -UseBasicParsing
         Copy-Item $tempJar $filePath -Force
         Remove-Item $tempJar
-        Write-Log "Reemplazado $filePath con versión segura 2.25.1."
+        Write-Log "Reemplazado $filePath con Log4j 2.25.1."
     }
     catch {
         Write-Log "ERROR reemplazando $filePath : $_"
     }
 }
 
-# URL oficial del jar log4j-core 2.25.1 (binario)
-$safeJarUrl = "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.25.1/log4j-core-2.25.1.jar"
+# URL oficial seguro Log4j 2.25.1
+$log4j2Url = "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.25.1/log4j-core-2.25.1.jar"
 
-# Buscar archivos Log4j 2.x
+# Actualizar Log4j 1.x
+Write-Log "Buscando archivos Log4j 1.x en C:\ ..."
+$jar1Files = Get-ChildItem -Path C:\ -Recurse -Include log4j-*.jar -ErrorAction SilentlyContinue
+if ($jar1Files.Count -gt 0) {
+    Write-Log "Se encontraron $($jar1Files.Count) archivos Log4j 1.x. Actualizando a 2.25.1..."
+    foreach ($jar in $jar1Files) { Backup-And-Replace-Jar $jar.FullName $log4j2Url }
+} else { Write-Log "No se encontraron archivos Log4j 1.x vulnerables." }
+
+# Actualizar Log4j 2.x (por si hay versiones anteriores a 2.25.1)
 Write-Log "Buscando archivos Log4j 2.x en C:\ ..."
-$jarFiles = Get-ChildItem -Path C:\ -Recurse -Include log4j-core-*.jar -ErrorAction SilentlyContinue
+$jar2Files = Get-ChildItem -Path C:\ -Recurse -Include log4j-core-*.jar -ErrorAction SilentlyContinue
+if ($jar2Files.Count -gt 0) {
+    Write-Log "Se encontraron $($jar2Files.Count) archivos Log4j 2.x. Actualizando a 2.25.1..."
+    foreach ($jar in $jar2Files) { Backup-And-Replace-Jar $jar.FullName $log4j2Url }
+} else { Write-Log "No se encontraron archivos Log4j 2.x vulnerables." }
 
-if ($jarFiles.Count -eq 0) {
-    Write-Log "No se encontraron archivos Log4j 2.x vulnerables en C:\"
-} else {
-    Write-Log "Se encontraron $($jarFiles.Count) archivos. Iniciando mitigación..."
-    foreach ($jar in $jarFiles) {
-        Backup-And-Replace-Jar $jar.FullName $safeJarUrl
-    }
-}
-
-Write-Log "Mitigación CVE-2023-26464 (Log4j 2.25.1) completada. Revisar logs en $logFile"
+Write-Log "Mitigación completa. Todos los Log4j se actualizaron a 2.25.1."
+Write-Host "Proceso finalizado. Logs disponibles en $logFile"
