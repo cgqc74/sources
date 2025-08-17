@@ -1,32 +1,38 @@
-# ======================================================
-# Script: Get-VSInstalled.ps1
-# Objetivo: Detectar Visual Studio instalado (ruta + versión)
-# ======================================================
+# ================================================================
+# Script: List-VS2019.ps1
+# Propósito: Detectar instalaciones de Visual Studio 2019
+#            Si vswhere.exe no existe, lo descarga automáticamente.
+# ================================================================
 
-$regKeys = @(
-    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
-)
+$vswhereDir  = "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer"
+$vswherePath = Join-Path $vswhereDir "vswhere.exe"
 
-$results = @()
+# URL oficial de descarga de vswhere (Microsoft)
+$vswhereUrl  = "https://github.com/microsoft/vswhere/releases/latest/download/vswhere.exe"
 
-foreach ($reg in $regKeys) {
-    Get-ChildItem $reg | ForEach-Object {
-        $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-        if ($p.DisplayName -match "Visual Studio") {
-            $results += [PSCustomObject]@{
-                DisplayName     = $p.DisplayName
-                DisplayVersion  = $p.DisplayVersion
-                InstallLocation = $p.InstallLocation
-                Publisher       = $p.Publisher
-            }
-        }
+# Si no existe vswhere… descargarlo
+if (!(Test-Path $vswherePath)) {
+    Write-Host "vswhere.exe no encontrado. Descargando..." -ForegroundColor Yellow
+    if (!(Test-Path $vswhereDir)) {
+        New-Item -ItemType Directory -Path $vswhereDir -Force | Out-Null
     }
+    Invoke-WebRequest -Uri $vswhereUrl -OutFile $vswherePath
+    Write-Host "vswhere.exe descargado en: $vswherePath" -ForegroundColor Green
 }
 
-if ($results.Count -eq 0) {
-    Write-Host "Visual Studio no detectado desde Uninstall key."
+# Consultar Visual Studio 2019 (version >=16.0 <17.0)
+$vsList = & $vswherePath -version "16.0 - 16.99" -products * -format json | ConvertFrom-Json
+
+if ($vsList.Count -eq 0) {
+    Write-Host "No se encontraron instalaciones de Visual Studio 2019"
 }
 else {
-    $results | Format-Table -AutoSize
+    $vsList | ForEach-Object {
+        [PSCustomObject]@{
+            Edition     = $_.installationName
+            Version     = $_.installationVersion
+            Release     = $_.channelName
+            InstallPath = $_.installationPath
+        }
+    } | Sort-Object Version | Format-Table -AutoSize
 }
