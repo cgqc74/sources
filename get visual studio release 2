@@ -1,25 +1,50 @@
 # =================================================================
-# Script: Get-VisualStudioUsingRegistry.ps1
-# Propósito: Obtener versiones instaladas de Visual Studio leyendo el registro
+# Script: Get-VisualStudio-Registry.ps1
+# Propósito: Detectar Visual Studio instalado con versión, release y ruta
 # =================================================================
 
-$vsRegistryPaths = @(
+# Tabla para convertir versión a nombre amigable
+$vsNames = @{
+    "17.0" = "Visual Studio 2022"
+    "16.0" = "Visual Studio 2019"
+    "15.0" = "Visual Studio 2017"
+    "14.0" = "Visual Studio 2015"
+    "13.0" = "Visual Studio 2013"
+}
+
+$regPaths = @(
     "HKLM:\SOFTWARE\Microsoft\VisualStudio\SxS\VS7",
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\SxS\VS7"
 )
 
 $results = @()
 
-foreach ($path in $vsRegistryPaths) {
+foreach ($path in $regPaths) {
     if (Test-Path $path) {
-        # path -> contiene claves con nombre = Version, valor = ruta de instalación
         $props = Get-ItemProperty -Path $path
-        foreach ($p in $props.PSObject.Properties) {
-            if ($p.Name -match "^\d+\.\d+") {   # detecta claves tipo 16.0, 17.0, etc.
+        foreach ($prop in $props.PSObject.Properties) {
+            if ($prop.Name -match "^\d+\.\d+") {
+                $version = $prop.Name
+                $installPath = $prop.Value
+
+                # Leer canal de release desde configuración
+                $channelReg = Join-Path $installPath "productinfo.json"
+                $channelName = ""
+                if (Test-Path $channelReg) {
+                    try {
+                        $json = Get-Content $channelReg | ConvertFrom-Json
+                        $channelName = $json.channelName
+                    } catch {
+                        $channelName = ""
+                    }
+                }
+
                 $results += [PSCustomObject]@{
-                    VSVersion     = $p.Name
-                    InstallPath   = $p.Value
-                    Architecture  = if ($path -like "*WOW6432Node*") { "x86" } else { "x64" }
+                    VSName     = $vsNames[$version]
+                    VSVersion  = $version
+                    InstallPath= $installPath
+                    Release    = if ($channelName) { $channelName } else { "Unknown" }
+                    Architecture = if ($path -like "*WOW6432Node*") { "x86" } else { "x64" }
                 }
             }
         }
@@ -27,8 +52,7 @@ foreach ($path in $vsRegistryPaths) {
 }
 
 if ($results.Count -eq 0) {
-    Write-Host "No se detectaron instalaciones de Visual Studio desde el registro."
+    Write-Host "No se detectó Visual Studio mediante el registro."
 } else {
-    Write-Host "Instalaciones de Visual Studio detectadas (vía registro):"
     $results | Sort-Object VSVersion | Format-Table -AutoSize
 }
