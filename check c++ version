@@ -1,0 +1,35 @@
+# =================================================================
+# Script: Get-VCRedistVersions.ps1
+# Propósito: Listar todas las versiones de Microsoft Visual C++ Redistributables instaladas
+# =================================================================
+
+function Get-VCRedistVersions {
+    $registryPaths = @(
+        "HKLM:\SOFTWARE\Microsoft\VisualStudio\VC\Runtimes",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\VC\Runtimes"
+    )
+
+    $results = @()
+
+    foreach ($path in $registryPaths) {
+        if (Test-Path $path) {
+            Get-ChildItem -Path $path | ForEach-Object {
+                $name = $_.PSChildName
+                $props = Get-ItemProperty $_.PSPath
+                $arch = if ($path -like "*WOW6432Node*") { "x86" } else { "x64" }
+                $version = $props.Version
+                $results += [PSCustomObject]@{
+                    Name    = $name
+                    Version = $version
+                    Architecture = $arch
+                    Path    = $_.PSPath
+                }
+            }
+        }
+    }
+
+    return $results
+}
+
+# Ejecutar la función y mostrar resultados
+Get-VCRedistVersions | Format-Table -AutoSize
