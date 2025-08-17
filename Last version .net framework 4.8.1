@@ -1,0 +1,42 @@
+# PowerShell Script: Install .NET Framework 4.8.1 (Release 533320)
+
+$targetRelease = 533320
+$installerUrl  = "https://download.visualstudio.microsoft.com/download/pr/e2684006-91c0-4c61-bf1a-7fdb4d7d5b11/e61a060713f4f02681e2d263d5491493/ndp481-kb5034129-x86-x64-allos-enu.exe"
+$tempInstaller = "$env:TEMP\NDP481.exe"
+
+function Get-CurrentNetRelease {
+    $regKey = "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
+    if (Test-Path $regKey) {
+        return (Get-ItemProperty -Path $regKey -ErrorAction Stop).Release
+    } else {
+        return 0
+    }
+}
+
+try {
+    $installedRelease = Get-CurrentNetRelease
+    Write-Host ".NET Framework Release instalado: $installedRelease"
+
+    if ($installedRelease -ge $targetRelease) {
+        Write-Host "Ya tienes .NET Framework 4.8.1 (Release $targetRelease o superior) instalado." -ForegroundColor Green
+    }
+    else {
+        Write-Host "Instalando .NET Framework 4.8.1 (Release $targetRelease)..."
+
+        # Descargar si no existe localmente
+        if (!(Test-Path $tempInstaller)) {
+            Write-Host "Descargando instalador..."
+            Invoke-WebRequest -Uri $installerUrl -OutFile $tempInstaller
+        }
+
+        # Instalar en modo silencioso
+        Start-Process -FilePath $tempInstaller `
+            -ArgumentList "/quiet /norestart" -Wait
+
+        Write-Host "Instalación completada. Reinicia el servidor para aplicar los cambios." `
+            -ForegroundColor Yellow
+    }
+}
+catch {
+    Write-Host "Error instalando .NET Framework: $_" -ForegroundColor Red
+}
