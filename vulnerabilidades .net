@@ -83,6 +83,8 @@ function Get-DotNetDownloadUrl {
 
         "8. NET CORE" { return "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/8.0.19/aspnetcore-runtime-8.0.19-win-x64.exe" }
 
+        "8. NET CORE" { return "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.19/windowsdesktop-runtime-8.0.19-win-x64.exe" }
+
         "8. NET DESKTOP" { return "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.19/windowsdesktop-runtime-8.0.19-win-x64.exe" }
 
         "9.0 RUNTIME" { return "https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.8/dotnet-runtime-9.0.8-win-x64.exe" }
