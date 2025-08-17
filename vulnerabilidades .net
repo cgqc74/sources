@@ -77,6 +77,8 @@ function Get-DotNetDownloadUrl {
 
         "8.0" { return "https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.19/dotnet-runtime-8.0.19-win-x64.exe" }
 
+        "8.0" { return "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/8.0.19/aspnetcore-runtime-8.0.19-win-x64.exe " }
+
         "9.0" { return "https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.8/dotnet-runtime-9.0.8-win-x64.exe" }
 
         "9.0" { return "https://builds.dotnet.microsoft.com/dotnet/Sdk/9.0.304/dotnet-sdk-9.0.304-win-x64.exe" }
