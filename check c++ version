@@ -1,35 +1,57 @@
-# =================================================================
-# Script: Get-VCRedistVersions.ps1
-# Propósito: Listar todas las versiones de Microsoft Visual C++ Redistributables instaladas
-# =================================================================
+# Get-VCRedistVersion.ps1
+# Obtiene las versiones instaladas del Microsoft Visual C++ Redistributable
+# Compatible con VC++ 2015, 2017, 2019, 2022 (todos usan la misma base)
 
-function Get-VCRedistVersions {
-    $registryPaths = @(
-        "HKLM:\SOFTWARE\Microsoft\VisualStudio\VC\Runtimes",
-        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\VC\Runtimes"
+# --- Función: Obtener versión de VC++ desde el registro ---
+function Get-VCRedistVersion {
+    $uninstallKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
     )
 
-    $results = @()
+    $vcEntries = Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue | Where-Object {
+        $_.DisplayName -like "Microsoft Visual C++ * Redistributable*" -and
+        $_.DisplayName -notlike "*Language Pack*"
+    }
 
-    foreach ($path in $registryPaths) {
-        if (Test-Path $path) {
-            Get-ChildItem -Path $path | ForEach-Object {
-                $name = $_.PSChildName
-                $props = Get-ItemProperty $_.PSPath
-                $arch = if ($path -like "*WOW6432Node*") { "x86" } else { "x64" }
-                $version = $props.Version
-                $results += [PSCustomObject]@{
-                    Name    = $name
-                    Version = $version
-                    Architecture = $arch
-                    Path    = $_.PSPath
-                }
-            }
+    $results = @()
+    foreach ($entry in $vcEntries) {
+        $name = $entry.DisplayName
+        $version = $entry.DisplayVersion
+        $arch = if ($name -match "x64") { "x64" } elseif ($name -match "x86") { "x86" } else { "Unknown" }
+
+        $results += [PSCustomObject]@{
+            Name     = $name
+            Version  = $version
+            Arch     = $arch
+            InstallDate = $entry.InstallDate
         }
     }
 
-    return $results
+    return $results | Sort-Object Version -Descending
 }
 
-# Ejecutar la función y mostrar resultados
-Get-VCRedistVersions | Format-Table -AutoSize
+# --- Ejecución ---
+Write-Host "`n🔍 Buscando Visual C++ Redistributable instalado..." -ForegroundColor Cyan
+
+$vcList = Get-VCRedistVersion
+
+if ($vcList.Count -eq 0) {
+    Write-Host "❌ No se encontró ningún Microsoft Visual C++ Redistributable." -ForegroundColor Red
+} else {
+    Write-Host "✅ Se encontraron $($vcList.Count) versiones de VC++ Redistributable:" -ForegroundColor Green
+    $vcList | Format-Table -AutoSize
+}
+
+# --- Recomendación ---
+$latest = "14.40.33807.0"  # Versión más reciente de VC++ 2015-2022 (v14.40+)
+$latestFound = $vcList | Where-Object { [version]$_.Version -ge [version]"14.30.0" } | Select-Object -First 1
+
+if (-not $latestFound) {
+    Write-Host "`n⚠️  No se encontró una versión reciente de VC++ (>= 14.30)." -ForegroundColor Yellow
+    Write-Host "💡 Descarga la última versión desde:" -ForegroundColor White
+    Write-Host "🔗 https://aka.ms/vs/17/release/vc_redist.x64.exe" -ForegroundColor Blue
+    Write-Host "🔗 https://aka.ms/vs/17/release/vc_redist.x86.exe" -ForegroundColor Blue
+} else {
+    Write-Host "`n✅ Tu sistema tiene una versión moderna de VC++: $($latestFound.Version)" -ForegroundColor Green
+}
