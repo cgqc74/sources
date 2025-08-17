@@ -1,58 +1,32 @@
-# =================================================================
-# Script: Get-VisualStudio-Registry.ps1
-# Propósito: Detectar Visual Studio instalado con versión, release y ruta
-# =================================================================
+# ======================================================
+# Script: Get-VSInstalled.ps1
+# Objetivo: Detectar Visual Studio instalado (ruta + versión)
+# ======================================================
 
-# Tabla para convertir versión a nombre amigable
-$vsNames = @{
-    "17.0" = "Visual Studio 2022"
-    "16.0" = "Visual Studio 2019"
-    "15.0" = "Visual Studio 2017"
-    "14.0" = "Visual Studio 2015"
-    "13.0" = "Visual Studio 2013"
-}
-
-$regPaths = @(
-    "HKLM:\SOFTWARE\Microsoft\VisualStudio\SxS\VS7",
-    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\SxS\VS7"
+$regKeys = @(
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 )
 
 $results = @()
 
-foreach ($path in $regPaths) {
-    if (Test-Path $path) {
-        $props = Get-ItemProperty -Path $path
-        foreach ($prop in $props.PSObject.Properties) {
-            if ($prop.Name -match "^\d+\.\d+") {
-                $version = $prop.Name
-                $installPath = $prop.Value
-
-                # Leer canal de release desde configuración
-                $channelReg = Join-Path $installPath "productinfo.json"
-                $channelName = ""
-                if (Test-Path $channelReg) {
-                    try {
-                        $json = Get-Content $channelReg | ConvertFrom-Json
-                        $channelName = $json.channelName
-                    } catch {
-                        $channelName = ""
-                    }
-                }
-
-                $results += [PSCustomObject]@{
-                    VSName     = $vsNames[$version]
-                    VSVersion  = $version
-                    InstallPath= $installPath
-                    Release    = if ($channelName) { $channelName } else { "Unknown" }
-                    Architecture = if ($path -like "*WOW6432Node*") { "x86" } else { "x64" }
-                }
+foreach ($reg in $regKeys) {
+    Get-ChildItem $reg | ForEach-Object {
+        $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+        if ($p.DisplayName -match "Visual Studio") {
+            $results += [PSCustomObject]@{
+                DisplayName     = $p.DisplayName
+                DisplayVersion  = $p.DisplayVersion
+                InstallLocation = $p.InstallLocation
+                Publisher       = $p.Publisher
             }
         }
     }
 }
 
 if ($results.Count -eq 0) {
-    Write-Host "No se detectó Visual Studio mediante el registro."
-} else {
-    $results | Sort-Object VSVersion | Format-Table -AutoSize
+    Write-Host "Visual Studio no detectado desde Uninstall key."
+}
+else {
+    $results | Format-Table -AutoSize
 }
