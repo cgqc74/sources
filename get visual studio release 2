@@ -1,13 +1,10 @@
 # ================================================================
 # Script: List-VS2019.ps1
-# Propósito: Detectar instalaciones de Visual Studio 2019
-#            Si vswhere.exe no existe, lo descarga automáticamente.
+# Propósito: Instalar vswhere.exe si no existe y listar VS2019
 # ================================================================
 
 $vswhereDir  = "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer"
 $vswherePath = Join-Path $vswhereDir "vswhere.exe"
-
-# URL oficial de descarga de vswhere (Microsoft)
 $vswhereUrl  = "https://github.com/microsoft/vswhere/releases/latest/download/vswhere.exe"
 
 # Si no existe vswhere… descargarlo
