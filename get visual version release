@@ -1,0 +1,58 @@
+# Get-VisualStudioVersion.ps1
+# Obtiene todas las versiones de Visual Studio instaladas
+# Autor: Qwen
+
+# Verificar si el módulo VSSetup está disponible
+if (-not (Get-Module -ListAvailable -Name VSSetup)) {
+    Write-Host "⚠️  El módulo VSSetup no está instalado. Instalando..." -ForegroundColor Yellow
+    try {
+        Install-Module VSSetup -Force -Scope CurrentUser
+        Import-Module VSSetup
+    } catch {
+        Write-Error "No se pudo instalar el módulo VSSetup: $($_.Exception.Message)"
+        Write-Host "💡 Ejecuta PowerShell como Administrador."
+        exit 1
+    }
+} else {
+    Import-Module VSSetup
+}
+
+# Obtener instancias de Visual Studio
+$instances = Get-VSSetupInstance -ErrorAction SilentlyContinue
+
+if (-not $instances) {
+    Write-Host "❌ No se encontró ninguna instalación de Visual Studio." -ForegroundColor Red
+    exit 0
+}
+
+Write-Host "`n✅ Visual Studio instalado(s):" -ForegroundColor Green
+
+$instances | ForEach-Object {
+    $instance = $_
+    $products = $instance | Select-Object -ExpandProperty Products
+
+    # Mapeo de IDs de producto a nombres legibles
+    $productNameMap = @{
+        "Microsoft.VisualStudio.Product.Enterprise"     = "Visual Studio Enterprise"
+        "Microsoft.VisualStudio.Product.Professional"   = "Visual Studio Professional"
+        "Microsoft.VisualStudio.Product.Community"      = "Visual Studio Community"
+        "Microsoft.VisualStudio.Product.BuildTools"     = "Visual Studio Build Tools"
+        "Microsoft.VisualStudio.Product.Workload"       = "Workload"
+        "Microsoft.VisualStudio.Product.VisualStudio"   = "Visual Studio"
+    }
+
+    $friendlyProducts = $products | ForEach-Object {
+        $matched = $productNameMap.GetEnumerator() | Where-Object { $_.Key -eq $_ } | Select-Object -ExpandProperty Value
+        if ($matched) { $matched } else { "Component" }
+    } | Where-Object { $_ -ne "Component" } | Get-Unique
+
+    if ($friendlyProducts.Count -eq 0) { $friendlyProducts = "Unknown SKU" }
+
+    [PSCustomObject]@{
+        Version      = $instance.Version
+        Channel      = $instance.ChannelId
+        Edition      = ($friendlyProducts -join ", ")
+        Path         = $instance.InstallationPath
+        Update       = $instance.UpdateChannel
+    }
+} | Format-Table -AutoSize
